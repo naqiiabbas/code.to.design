@@ -86,6 +86,7 @@ function splitAssets(snapshot) {
 }
 
 let pluginSource;
+let payloadText;
 let snapshot;
 let withLayout;
 let plain;
@@ -150,6 +151,7 @@ test.before(async () => {
       warnings: capture.warnings,
     },
   });
+  payloadText = payload;
   snapshot = await decodePayload(payload);
 
   // 3. Build it twice: once as the plugin ships (auto layout on), and once with
@@ -397,4 +399,101 @@ test('an unsupported image format is reported, not fatal', async () => {
   } finally {
     snapshot = original;
   }
+});
+
+/* ------------------------------------------------ paste-on-canvas flow */
+
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+/** Waits for the plugin's async boot, or for a message to appear. */
+async function until(predicate, what) {
+  for (let i = 0; i < 200; i++) {
+    if (predicate()) return;
+    await settle();
+  }
+  assert.fail(`timed out waiting for ${what}`);
+}
+
+/**
+ * Boots the plugin the way Figma does after the user pastes on the canvas, and
+ * plays the part of the UI iframe: decode the payload the sandbox hands over and
+ * post it straight back.
+ */
+async function runPastedImport({ withPayload }) {
+  const mock = createFigmaMock();
+  if (withPayload) mock.addPastedText(payloadText);
+
+  globalThis.figma = mock.figma;
+  globalThis.__html__ = mock.html;
+  // eslint-disable-next-line no-eval
+  (0, eval)(pluginSource);
+
+  const messages = mock.figma.__messages;
+  await until(() => messages.length > 0, 'the plugin to boot');
+
+  const auto = messages.find((m) => m.type === 'auto-import');
+  if (auto) {
+    const { lean, images } = splitAssets(await decodePayload(auto.payload));
+    await mock.figma.ui.onmessage({ type: 'import', snapshot: lean, images, options: auto.options });
+  }
+  return { mock, messages, auto };
+}
+
+test('the plugin opens hidden and imports a capture pasted on the canvas', async () => {
+  const { mock, messages, auto } = await runPastedImport({ withPayload: true });
+
+  assert.ok(auto, `no auto-import was offered. Messages: ${messages.map((m) => m.type).join(', ')}`);
+  assert.equal(mock.figma.__visible, false, 'the panel was put in front of the user');
+  assert.ok(messages.find((m) => m.type === 'done'), 'the import never finished');
+
+  // The payload layer is cleared and the plugin gets out of the way.
+  assert.equal(mock.page.children.length, 1, 'the pasted payload layer was left on the canvas');
+  assert.notEqual(mock.page.children[0].type, 'TEXT', 'the remaining node should be the imported frame');
+  assert.equal(mock.figma.__closed, true, 'the plugin stayed open after an automatic import');
+  assert.equal(mock.figma.__notifications.length, 1, 'no confirmation was shown');
+});
+
+test('with nothing pasted, the plugin reveals its panel instead', async () => {
+  const { mock, messages, auto } = await runPastedImport({ withPayload: false });
+
+  assert.equal(auto, undefined, 'it tried to auto-import with nothing on the canvas');
+  assert.ok(messages.find((m) => m.type === 'ready'), 'the panel was never initialised');
+  assert.equal(mock.figma.__visible, true, 'the panel stayed hidden with no way to paste');
+  assert.equal(mock.figma.__closed, false, 'the plugin closed without doing anything');
+});
+
+test('a pasted layer that is not a capture reveals the panel rather than failing silently', async () => {
+  const mock = createFigmaMock();
+  mock.addPastedText('C2D1:z\nthis is not valid base64 payload data');
+  globalThis.figma = mock.figma;
+  globalThis.__html__ = mock.html;
+  // eslint-disable-next-line no-eval
+  (0, eval)(pluginSource);
+
+  await until(() => mock.figma.__messages.some((m) => m.type === 'auto-import'), 'the auto-import offer');
+  const auto = mock.figma.__messages.find((m) => m.type === 'auto-import');
+
+  // The UI fails to decode and asks to be revealed, exactly as App.tsx does.
+  let failed = false;
+  try {
+    await decodePayload(auto.payload);
+  } catch {
+    failed = true;
+    await mock.figma.ui.onmessage({ type: 'reveal', message: 'not a usable capture' });
+  }
+  assert.ok(failed, 'the junk payload decoded, so this test proves nothing');
+  assert.equal(mock.figma.__visible, true, 'the panel stayed hidden after a bad paste');
+  assert.equal(mock.figma.__closed, false, 'the plugin closed on a bad paste');
+});
+
+test('the wrapped payload survives being pasted as a Figma text layer', async () => {
+  // Figma stores pasted text verbatim, but the wrapping exists so a multi-megabyte
+  // single "word" never reaches its line breaker.
+  assert.ok(payloadText.includes('\n'), 'the payload is not line-wrapped');
+  const [first, second] = payloadText.split('\n');
+  assert.equal(first, 'C2D1:z', `unexpected header line: ${first}`);
+  assert.ok(second.length <= 120, `line too long: ${second.length}`);
+
+  const decoded = await decodePayload(payloadText);
+  assert.equal(decoded.frames.length, 1, 'the wrapped payload did not round-trip');
 });

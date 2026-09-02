@@ -38,12 +38,28 @@ async function streamThrough(bytes: Uint8Array, stream: TransformStream): Promis
   return new Uint8Array(buf);
 }
 
+/**
+ * Base64 is wrapped into lines. Pasting onto the Figma canvas turns the payload
+ * into a text layer, and one multi-megabyte "word" is the worst possible input
+ * for line breaking; wrapping costs under 1% of size and keeps that cheap.
+ */
+const LINE_WIDTH = 120;
+
+function wrap(base64: string): string {
+  if (base64.length <= LINE_WIDTH) return base64;
+  const lines: string[] = [];
+  for (let i = 0; i < base64.length; i += LINE_WIDTH) {
+    lines.push(base64.slice(i, i + LINE_WIDTH));
+  }
+  return lines.join('\n');
+}
+
 export async function encodePayload(snapshot: Snapshot): Promise<string> {
   const json = JSON.stringify(snapshot);
   const raw = new TextEncoder().encode(json);
-  if (!hasCompressionStream) return PAYLOAD_PREFIX + 'r' + bytesToBase64(raw);
+  if (!hasCompressionStream) return PAYLOAD_PREFIX + 'r\n' + wrap(bytesToBase64(raw));
   const gz = await streamThrough(raw, new CompressionStream('gzip'));
-  return PAYLOAD_PREFIX + 'z' + bytesToBase64(gz);
+  return PAYLOAD_PREFIX + 'z\n' + wrap(bytesToBase64(gz));
 }
 
 export async function decodePayload(text: string): Promise<Snapshot> {
@@ -55,7 +71,8 @@ export async function decodePayload(text: string): Promise<Snapshot> {
   }
   const body = trimmed.slice(PAYLOAD_PREFIX.length);
   const mode = body[0];
-  const bytes = base64ToBytes(body.slice(1));
+  // Strip the line wrapping, plus anything Figma's text layout may have added.
+  const bytes = base64ToBytes(body.slice(1).replace(/\s+/g, ''));
   let raw: Uint8Array;
   if (mode === 'z') {
     if (typeof globalThis.DecompressionStream !== 'function') {

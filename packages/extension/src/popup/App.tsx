@@ -282,7 +282,7 @@ export function App() {
       <StatusView status={status} onRecopy={recopy} onSave={saveFile} hasPayload={hasPayload} />
 
       <footer className="footer">
-        <span>Open the code.to.design plugin in Figma, then paste.</span>
+        <span>In Figma: press Ctrl+V on the canvas, then run the plugin.</span>
       </footer>
     </div>
   );

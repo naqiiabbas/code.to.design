@@ -68,8 +68,12 @@ teammate, send them the zip and have them do the same four steps.
    mode: whatever you hover is outlined in blue with its tag and pixel size, `↑` / `↓` step
    to the parent or first child, click or `Enter` confirms, `Esc` cancels. The page still
    scrolls while you pick, and clicks never activate the link underneath.
-4. The capture lands on your clipboard. In Figma, run the plugin, click the paste area and
-   press `Ctrl+V` / `Cmd+V`, then **Import to canvas**.
+4. The capture lands on your clipboard. In Figma, press `Ctrl+V` on the canvas, then run the
+   plugin (`Ctrl+Alt+P` re-runs the last one). It imports without ever opening a window:
+   the paste lands as a text layer, the plugin picks it up, imports it, deletes it and closes.
+
+   Running the plugin *first* also works — it opens a panel you can paste into, which is the
+   fallback when there is nothing on the canvas to pick up.
 
 If the clipboard write fails (or the payload is enormous), use **Save .c2d file** in the
 popup and drop that file onto the plugin instead.
@@ -153,11 +157,12 @@ cross-origin images come back as real bytes rather than tainting a canvas.
 
 ## How much of this is actually verified
 
-65 tests, all passing. The suite is not a set of mocks talking to each other — it runs the
+69 tests, all passing. The suite is not a set of mocks talking to each other — it runs the
 real built bundles:
 
 - **Service worker** (`packages/extension/test/background.test.mjs`) loads the built worker with and without `chrome.debugger` present and asserts it still registers its listeners, and checks the manifest never requests a permission Chrome refuses to make optional.
 - **Colour resolution** (`packages/extension/test/modern-colors.e2e.mjs`) captures a fixture whose entire palette is `oklch`, plus `lab`, `lch`, `color(srgb)`, `display-p3` and `color-mix`, and checks the results against the CSS Color 4 conversion worked out independently in the test.
+- **The paste-on-canvas flow** (`packages/figma-plugin/test/import.e2e.mjs`) boots the real plugin bundle with a payload sitting on the canvas as a pasted text layer and checks it imports with the panel never shown, clears the payload layer and closes — plus that it reveals the panel when there is nothing to pick up, or when what was pasted will not decode.
 - **The picker** (`packages/extension/test/picker.e2e.mjs`) screenshots the page and samples real pixels to confirm the blue highlight is actually visible over a sticky header and over an element at the maximum z-index. A DOM assertion would not have caught the bug it covers.
 - **Capture** (`packages/extension/test/`) launches your installed Chrome, loads a fixture
   page, injects the real `dist/capture.js` and asserts on what comes out: gradients,

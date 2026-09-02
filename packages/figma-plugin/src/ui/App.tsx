@@ -32,6 +32,44 @@ export function App() {
   const [dragging, setDragging] = useState(false);
   const pasteRef = useRef<HTMLTextAreaElement>(null);
 
+  /** Decodes a clipboard payload into what the sandbox needs. */
+  const decode = useCallback(async (text: string) => {
+    const snapshot = await decodePayload(text);
+    const images: Record<string, Uint8Array> = {};
+    for (const [id, asset] of Object.entries(snapshot.assets ?? {})) {
+      images[id] = base64ToBytes(asset.data);
+    }
+    // The base64 copies would double the message size crossing into the
+    // sandbox; the bytes travel separately.
+    const lean: Snapshot = {
+      ...snapshot,
+      assets: Object.fromEntries(
+        Object.entries(snapshot.assets ?? {}).map(([id, a]) => [id, { ...a, data: '' }]),
+      ),
+    };
+    return { snapshot: lean, images };
+  }, []);
+
+  const load = useCallback(
+    async (text: string) => {
+      if (!text.trim()) return;
+      if (!looksLikePayload(text)) {
+        setPhase({
+          kind: 'error',
+          message: 'That is not a code.to.design capture. Capture a page in Chrome first, then paste here.',
+        });
+        return;
+      }
+      setPhase({ kind: 'importing', message: 'Reading capture...', ratio: 0.02 });
+      try {
+        setPhase({ kind: 'loaded', ...(await decode(text)) });
+      } catch (err) {
+        setPhase({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
+      }
+    },
+    [decode],
+  );
+
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       const msg = event.data?.pluginMessage;
@@ -40,41 +78,25 @@ export function App() {
       if (msg.type === 'progress') setPhase({ kind: 'importing', message: msg.message, ratio: msg.ratio });
       if (msg.type === 'done') setPhase({ kind: 'done', report: msg.report });
       if (msg.type === 'error') setPhase({ kind: 'error', message: msg.message });
+
+      if (msg.type === 'auto-import') {
+        // A capture was pasted straight onto the canvas. Import it without ever
+        // showing this panel; if it will not decode, ask to be revealed.
+        setOptions(msg.options);
+        setPhase({ kind: 'importing', message: 'Reading pasted capture...', ratio: 0.02 });
+        decode(msg.payload)
+          .then(({ snapshot, images }) => post({ type: 'import', snapshot, images, options: msg.options }))
+          .catch((err) => {
+            const detail = err instanceof Error ? err.message : String(err);
+            setPhase({ kind: 'error', message: detail });
+            post({ type: 'reveal', message: `That pasted layer is not a usable capture: ${detail}` });
+          });
+      }
     };
     window.addEventListener('message', onMessage);
     pasteRef.current?.focus();
     return () => window.removeEventListener('message', onMessage);
-  }, []);
-
-  const load = useCallback(async (text: string) => {
-    if (!text.trim()) return;
-    if (!looksLikePayload(text)) {
-      setPhase({
-        kind: 'error',
-        message: 'That is not a code.to.design capture. Capture a page in Chrome first, then paste here.',
-      });
-      return;
-    }
-    setPhase({ kind: 'importing', message: 'Reading capture...', ratio: 0.02 });
-    try {
-      const snapshot = await decodePayload(text);
-      const images: Record<string, Uint8Array> = {};
-      for (const [id, asset] of Object.entries(snapshot.assets ?? {})) {
-        images[id] = base64ToBytes(asset.data);
-      }
-      // The base64 copies would double the message size crossing into the
-      // sandbox; the bytes travel separately.
-      const lean: Snapshot = {
-        ...snapshot,
-        assets: Object.fromEntries(
-          Object.entries(snapshot.assets ?? {}).map(([id, a]) => [id, { ...a, data: '' }]),
-        ),
-      };
-      setPhase({ kind: 'loaded', snapshot: lean, images });
-    } catch (err) {
-      setPhase({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
-    }
-  }, []);
+  }, [decode]);
 
   const onPaste = useCallback(
     (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -117,7 +139,10 @@ export function App() {
     >
       <header>
         <h1>code.to.design</h1>
-        <p>Paste a capture from the Chrome extension.</p>
+        <p>
+          Paste on the canvas and run this plugin, and it imports without opening. Or paste
+          here instead.
+        </p>
       </header>
 
       {phase.kind === 'waiting' && (

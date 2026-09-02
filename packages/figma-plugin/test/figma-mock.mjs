@@ -199,6 +199,15 @@ class BaseNode {
     return (Math.atan2(-b, a) * 180) / Math.PI;
   }
 
+  remove() {
+    if (this.parent) {
+      const siblings = this.parent.children;
+      siblings.splice(siblings.indexOf(this), 1);
+      this.parent = null;
+    }
+    this.removed = true;
+  }
+
   setPluginData(key, value) {
     if (typeof value !== 'string') fail('setPluginData only stores strings');
     this._pluginData[key] = value;
@@ -406,6 +415,17 @@ export function createFigmaMock({ html = '<html></html>' } = {}) {
   const page = new FrameNode(state);
   page.type = 'PAGE';
   page.name = 'Page 1';
+  page.findAllWithCriteria = ({ types }) => {
+    const out = [];
+    const walk = (node) => {
+      for (const child of node.children ?? []) {
+        if (types.includes(child.type)) out.push(child);
+        walk(child);
+      }
+    };
+    walk(page);
+    return out;
+  };
 
   const messages = [];
   const notifications = [];
@@ -416,10 +436,17 @@ export function createFigmaMock({ html = '<html></html>' } = {}) {
     __messages: messages,
     __notifications: notifications,
 
-    showUI() {},
+    showUI(_html, options = {}) {
+      figma.__visible = options.visible !== false;
+    },
+    __visible: true,
+    __closed: false,
     ui: {
       onmessage: null,
       postMessage: (message) => messages.push(message),
+      show() { figma.__visible = true; },
+      hide() { figma.__visible = false; },
+      resize() {},
     },
 
     currentPage: page,
@@ -484,7 +511,7 @@ export function createFigmaMock({ html = '<html></html>' } = {}) {
     },
 
     notify: (message, options) => notifications.push({ message, options }),
-    closePlugin: () => {},
+    closePlugin: () => { figma.__closed = true; },
   };
 
   Object.defineProperty(page, 'selection', {
@@ -495,5 +522,20 @@ export function createFigmaMock({ html = '<html></html>' } = {}) {
     get() { return this._selection ?? []; },
   });
 
-  return { figma, html, page };
+  /**
+   * Stands in for what Figma does when plain text is pasted onto the canvas:
+   * a text layer named after its content, already selected. The characters are
+   * set directly because the normal setter demands a loaded font.
+   */
+  function addPastedText(text) {
+    const node = new TextNode(state);
+    node._characters = text;
+    const [firstLine] = text.split(/\r?\n/);
+    node.name = firstLine.slice(0, 60);
+    page.appendChild(node);
+    page.selection = [node];
+    return node;
+  }
+
+  return { figma, html, page, addPastedText };
 }
