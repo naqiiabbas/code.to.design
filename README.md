@@ -112,6 +112,9 @@ Capturing with `Browser` + `Browser theme` never attaches at all.
 | `opacity`, `mix-blend-mode`, `transform: rotate()` | opacity, blend mode, rotation |
 | `<input>`, `<textarea>`, `<select>` | box plus its value or placeholder as text |
 | `overflow: hidden/auto` | clipping frames |
+| internally scrolling boxes (dropdowns, popup lists, horizontal strips) | frames grown to their full content, with everything after them reflowed |
+
+Anything with its own scrollbar is temporarily grown to its full content before the capture, so a dropdown showing 3 of 10 rows arrives in Figma with all 10 and a frame tall enough to hold them. The expansion happens in the page and the browser re-runs layout, so ancestors resize and following content moves down exactly as it would have; the page is restored afterwards.
 
 Colours are resolved by painting a pixel and reading it back, not by parsing the string `getComputedStyle` returns. That is the only approach that handles `oklch` (Tailwind v4’s whole palette), `lab`, `lch`, `oklab`, `color(srgb ...)`, `display-p3` and `color-mix()` — Chrome hands all of those back verbatim, and so does canvas `fillStyle`.
 
@@ -157,12 +160,13 @@ cross-origin images come back as real bytes rather than tainting a canvas.
 
 ## How much of this is actually verified
 
-69 tests, all passing. The suite is not a set of mocks talking to each other — it runs the
+76 tests, all passing. The suite is not a set of mocks talking to each other — it runs the
 real built bundles:
 
 - **Service worker** (`packages/extension/test/background.test.mjs`) loads the built worker with and without `chrome.debugger` present and asserts it still registers its listeners, and checks the manifest never requests a permission Chrome refuses to make optional.
 - **Colour resolution** (`packages/extension/test/modern-colors.e2e.mjs`) captures a fixture whose entire palette is `oklch`, plus `lab`, `lch`, `color(srgb)`, `display-p3` and `color-mix`, and checks the results against the CSS Color 4 conversion worked out independently in the test.
 - **The paste-on-canvas flow** (`packages/figma-plugin/test/import.e2e.mjs`) boots the real plugin bundle with a payload sitting on the canvas as a pasted text layer and checks it imports with the panel never shown, clears the payload layer and closes — plus that it reveals the panel when there is nothing to pick up, or when what was pasted will not decode.
+- **Scroll expansion** (`packages/extension/test/scroller.e2e.mjs`) drives the real picker onto a popup whose list shows 3 of 10 rows, and checks all ten arrive, the frame grows to fit, the footer moves below it, horizontal strips expand too, and the page is left as it was found.
 - **The picker** (`packages/extension/test/picker.e2e.mjs`) screenshots the page and samples real pixels to confirm the blue highlight is actually visible over a sticky header and over an element at the maximum z-index. A DOM assertion would not have caught the bug it covers.
 - **Capture** (`packages/extension/test/`) launches your installed Chrome, loads a fixture
   page, injects the real `dist/capture.js` and asserts on what comes out: gradients,

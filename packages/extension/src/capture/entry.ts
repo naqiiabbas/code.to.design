@@ -1,5 +1,6 @@
 import type { FontRequest, FrameNode, Paint, SceneNode } from '@c2d/shared';
 import { AssetRegistry } from './assets';
+import { expandScrollContainers, type Expansion } from './expand';
 import { isVisibleColor, parseColor, solid } from './css';
 import { resetIds, round, walkElement } from './walker';
 
@@ -42,6 +43,10 @@ function freezePage(): () => void {
 }
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Lets style changes reach layout before anything is measured. */
+const settleLayout = () =>
+  new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
 /** Scrolls the page end to end so lazy-loaded images and IO-triggered UI render. */
 async function primeLazyContent(): Promise<void> {
@@ -115,9 +120,28 @@ async function capture(request: CaptureRequest, target?: Element): Promise<Captu
   const unfreeze = freezePage();
   const registry = new AssetRegistry(request.maxImageDimension ?? 2400);
   const warnings: string[] = [];
+  let expansion: Expansion | null = null;
 
   try {
     await primeLazyContent();
+
+    // Grow internally scrolling boxes so nothing is lost below their fold, and
+    // let the browser re-run layout before anything is measured.
+    const scope = target ?? document.body;
+    if (scope) {
+      expansion = expandScrollContainers(scope);
+      if (expansion.expanded || expansion.skipped) await settleLayout();
+      if (expansion.expanded) {
+        warnings.push(
+          `Expanded ${expansion.expanded} scrollable area${expansion.expanded === 1 ? '' : 's'} so the content hidden by scrolling is included.`,
+        );
+      }
+      if (expansion.skipped) {
+        warnings.push(
+          `Left ${expansion.skipped} scrollable area${expansion.skipped === 1 ? '' : 's'} as-is; the content was too large to expand safely.`,
+        );
+      }
+    }
 
     let root: FrameNode;
     if (request.mode === 'selection' && target) {
@@ -194,6 +218,8 @@ async function capture(request: CaptureRequest, target?: Element): Promise<Captu
       url: location.href,
     };
   } finally {
+    // The page must be left exactly as it was found, even if the walk threw.
+    expansion?.restore();
     unfreeze();
   }
 }
