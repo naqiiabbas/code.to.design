@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Modern colour spaces</title>
+    <style>
+      /* Mirrors a Tailwind v4 app: the whole palette is oklch, piped through
+         custom properties, which is what broke the first real capture. */
+      :root {
+        --gray-950: oklch(0.13 0.028 261.692);
+        --gray-500: oklch(0.551 0.027 264.364);
+        --gray-200: oklch(0.928 0.006 264.531);
+        --blue-600: oklch(0.546 0.245 262.881);
+        --white: oklch(1 0 0);
+      }
+
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--white);
+        font: 400 14px/1.5 Arial, sans-serif;
+        color: var(--gray-950);
+      }
+
+      #nav {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 16px;
+        background: var(--gray-950);
+        border-radius: 10px;
+      }
+      #nav-active {
+        color: var(--white);
+        background: var(--blue-600);
+        padding: 6px 14px;
+        border-radius: 999px;
+        font-weight: 700;
+      }
+      #nav-idle { color: oklch(0.872 0.01 258.338); }
+
+      #label {
+        display: block;
+        margin: 20px 0 6px;
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--gray-500);
+      }
+      #field {
+        display: block;
+        width: 320px;
+        padding: 10px 12px;
+        border: 1px solid var(--gray-200);
+        border-radius: 8px;
+        background: var(--white);
+        color: var(--gray-950);
+      }
+
+      #lab-text { color: lab(45% 40 30); }
+      #lch-box { background: lch(70% 50 140); width: 80px; height: 40px; }
+      #srgb-box { background: color(srgb 0.2 0.4 0.6); width: 80px; height: 40px; }
+      #p3-text { color: color(display-p3 0.9 0.2 0.1); }
+      #mix-box { background: color-mix(in oklab, red 40%, blue); width: 80px; height: 40px; }
+      #hwb-text { color: hwb(200 20% 10%); }
+
+      #really-transparent { color: transparent; }
+      #shadowed { box-shadow: 0 4px 12px oklch(0.546 0.245 262.881 / 0.4); }
+      #gradient {
+        width: 200px;
+        height: 60px;
+        background: linear-gradient(to right, oklch(0.546 0.245 262.881), oklch(0.7 0.2 30));
+      }
+    </style>
+  </head>
+  <body>
+    <nav id="nav">
+      <span id="nav-active">Dispatch</span>
+      <span id="nav-idle">Bookings</span>
+    </nav>
+
+    <span id="label">Pickup time</span>
+    <span id="field">02/09/2026 19:15</span>
+
+    <p id="lab-text">Lab text</p>
+    <div id="lch-box"></div>
+    <div id="srgb-box"></div>
+    <p id="p3-text">Display P3 text</p>
+    <div id="mix-box"></div>
+    <p id="hwb-text">HWB text</p>
+    <p id="really-transparent">Invisible on purpose</p>
+    <div id="shadowed">Shadowed</div>
+    <div id="gradient"></div>
+
+    <!-- A Lucide-style icon: stroke inherits an oklch colour through currentColor. -->
+    <span id="icon-host" style="color: var(--blue-600)">
+      <svg id="icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M8 12l3 3 5-6" style="stroke: currentColor" />
+      </svg>
+    </span>
+  </body>
+</html>

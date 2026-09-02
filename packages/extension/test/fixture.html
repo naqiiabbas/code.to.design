@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Capture fixture</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: #f4f6fb;
+        font: 400 16px/1.5 Georgia, serif;
+        color: #16181d;
+      }
+      .page { width: 900px; margin: 0 auto; padding: 40px 0 80px; }
+
+      .hero {
+        background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);
+        border-radius: 20px;
+        padding: 48px 40px;
+        color: #fff;
+        box-shadow: 0 20px 45px -10px rgba(79, 70, 229, 0.55);
+      }
+      .hero h1 { margin: 0 0 12px; font-size: 44px; line-height: 1.1; letter-spacing: -0.02em; }
+      .hero p { margin: 0; font-size: 18px; opacity: 0.9; max-width: 520px; }
+      .hero em { font-style: italic; text-decoration: underline; }
+      .hero strong { font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+
+      .row {
+        display: flex;
+        gap: 24px;
+        align-items: stretch;
+        justify-content: space-between;
+        margin-top: 32px;
+      }
+      .card {
+        flex: 1;
+        background: #fff;
+        border: 1px solid #dfe3ec;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
+      }
+      .card h2 { margin: 0 0 8px; font-size: 18px; font-family: Arial, sans-serif; }
+      .card .price { font-size: 30px; font-weight: 700; color: #4f46e5; }
+
+      .badge {
+        display: inline-block;
+        background: #fef3c7;
+        border: 2px dashed #f59e0b;
+        border-radius: 999px;
+        padding: 4px 12px;
+        font-size: 12px;
+        color: #92400e;
+      }
+
+      .split {
+        margin-top: 32px;
+        display: flex;
+        gap: 20px;
+      }
+      .rotated {
+        width: 120px;
+        height: 120px;
+        background: #ef4444;
+        transform: rotate(15deg);
+        border-radius: 8px;
+      }
+      .clipped {
+        width: 200px;
+        height: 120px;
+        overflow: hidden;
+        border-radius: 16px;
+        position: relative;
+        background: radial-gradient(circle at 30% 30%, #fde68a, #b45309);
+      }
+      .clipped .overflowing {
+        position: absolute;
+        top: 60px;
+        left: 120px;
+        width: 200px;
+        height: 200px;
+        background: rgba(0, 0, 0, 0.35);
+      }
+      .stacked { position: relative; width: 160px; height: 120px; }
+      .stacked div { position: absolute; width: 80px; height: 80px; border-radius: 6px; }
+      .stacked .under { left: 0; top: 0; background: #22c55e; z-index: 1; }
+      .stacked .over { left: 30px; top: 20px; background: #0ea5e9; z-index: 5; }
+
+      .marker::after {
+        content: '';
+        position: absolute;
+        right: 12px;
+        top: 12px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #ef4444;
+      }
+      .form { margin-top: 32px; display: flex; gap: 12px; }
+      .form input {
+        flex: 1;
+        padding: 10px 14px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 14px;
+      }
+      .form button {
+        background: #16181d;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 22px;
+        font-size: 14px;
+      }
+      .hidden { display: none; }
+      .invisible { visibility: hidden; }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <h1>Design systems, <em>captured</em> from the web</h1>
+        <p>
+          Pull any page into Figma as editable layers. <strong>No screenshots</strong>, no
+          re-drawing — just the real boxes, type and colour.
+        </p>
+      </header>
+
+      <div class="row">
+        <section class="card marker" style="position: relative">
+          <h2>Starter</h2>
+          <div class="price">$0</div>
+          <span class="badge">Free forever</span>
+        </section>
+        <section class="card">
+          <h2>Team</h2>
+          <div class="price">$24</div>
+          <span class="badge">Per seat</span>
+        </section>
+        <section class="card">
+          <h2>Studio</h2>
+          <div class="price">$99</div>
+          <span class="badge">Unlimited</span>
+        </section>
+      </div>
+
+      <div class="split">
+        <div class="rotated"></div>
+        <div class="clipped"><div class="overflowing"></div></div>
+        <div class="stacked">
+          <div class="over"></div>
+          <div class="under"></div>
+        </div>
+        <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M8 12l3 3 5-6" />
+        </svg>
+        <img
+          alt="A red dot"
+          width="120"
+          height="120"
+          src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        />
+      </div>
+
+      <form class="form">
+        <input type="text" value="hello@studio.com" />
+        <input type="text" placeholder="Your name" />
+        <button type="button">Subscribe</button>
+      </form>
+
+      <div class="hidden">never captured</div>
+      <div class="invisible">also never captured</div>
+    </div>
+  </body>
+</html>

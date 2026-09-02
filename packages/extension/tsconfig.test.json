@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "allowJs": true,
+    "checkJs": false,
+    "types": ["node", "chrome"],
+    "paths": { "@c2d/shared": ["../shared/src/index.ts"] }
+  },
+  "include": ["src/**/*.test.ts", "src/capture/css.ts", "test"]
+}

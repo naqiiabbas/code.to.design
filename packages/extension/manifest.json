@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "code.to.design",
+  "version": "0.1.0",
+  "description": "Capture any web page as editable Figma layers. Pick viewports and themes, capture, paste into the Figma plugin.",
+  "minimum_chrome_version": "116",
+  "action": {
+    "default_title": "code.to.design",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "offscreen",
+    "debugger"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "commands": {
+    "capture-page": {
+      "suggested_key": {
+        "default": "Alt+Shift+E"
+      },
+      "description": "Capture current page"
+    },
+    "capture-selection": {
+      "suggested_key": {
+        "default": "Alt+Shift+D"
+      },
+      "description": "Capture selection"
+    }
+  }
+}

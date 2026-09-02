@@ -1,0 +1,36 @@
+{
+  "name": "code-to-design",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Capture any web page from Chrome and paste it into Figma as editable layers.",
+  "workspaces": [
+    "packages/shared",
+    "packages/extension",
+    "packages/figma-plugin"
+  ],
+  "scripts": {
+    "build": "npm run icons && npm run build -w @c2d/extension && npm run build -w @c2d/figma-plugin",
+    "build:ext": "npm run build -w @c2d/extension",
+    "build:plugin": "npm run build -w @c2d/figma-plugin",
+    "dev:ext": "npm run dev -w @c2d/extension",
+    "package": "node scripts/package.mjs",
+    "typecheck": "tsc -p packages/shared/tsconfig.json --noEmit && tsc -p packages/extension/tsconfig.json --noEmit && tsc -p packages/extension/tsconfig.test.json --noEmit && tsc -p packages/figma-plugin/tsconfig.json --noEmit",
+    "icons": "node scripts/gen-icons.mjs",
+    "test": "npm run build && node --test packages/extension/src/capture/css.test.ts packages/extension/test/background.test.mjs packages/extension/test/capture.e2e.mjs packages/extension/test/modern-colors.e2e.mjs packages/extension/test/picker.e2e.mjs packages/figma-plugin/test/import.e2e.mjs",
+    "test:unit": "npm run build:ext && node --test packages/extension/src/capture/css.test.ts packages/extension/test/background.test.mjs",
+    "test:e2e": "node --test packages/extension/test/capture.e2e.mjs packages/extension/test/modern-colors.e2e.mjs packages/extension/test/picker.e2e.mjs packages/figma-plugin/test/import.e2e.mjs"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.100.2",
+    "@types/chrome": "^0.0.280",
+    "@types/node": "^26.4.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "playwright-core": "^1.62.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}

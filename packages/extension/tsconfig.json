@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": [
+      "chrome",
+      "vite/client"
+    ],
+    "paths": {
+      "@c2d/shared": [
+        "../shared/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "scripts"
+  ],
+  "exclude": [
+    "src/**/*.test.ts",
+    "test"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "typeRoots": [
+      "../../node_modules/@types",
+      "../../node_modules/@figma"
+    ],
+    "paths": {
+      "@c2d/shared": [
+        "../shared/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "scripts"
+  ],
+  "exclude": [
+    "test"
+  ]
+}

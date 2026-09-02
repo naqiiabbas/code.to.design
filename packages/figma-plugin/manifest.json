@@ -1,0 +1,13 @@
+{
+  "name": "code.to.design",
+  "id": "code-to-design-local",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["none"],
+    "reasoning": "Everything is decoded from the pasted capture. The plugin never talks to a server."
+  }
+}

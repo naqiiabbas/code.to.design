@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Picker stacking fixture</title>
+    <style>
+      body { margin: 0; font: 14px/1.5 Arial, sans-serif; background: #ffffff; }
+
+      /* The shapes real sites use, and the reason the highlight used to vanish. */
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 999;
+        height: 120px;
+        background: #ffffff;
+        border-bottom: 1px solid #e5e7eb;
+        padding: 20px;
+      }
+      #widget {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        width: 200px;
+        height: 200px;
+        /* Chat widgets really do use the maximum. */
+        z-index: 2147483647;
+        background: #ffffff;
+        border: 1px solid #d1d5db;
+      }
+      #plain { height: 300px; background: #ffffff; padding: 20px; }
+      /* Tall enough that the page genuinely scrolls. */
+      #tall { height: 1600px; background: #ffffff; }
+      main { padding: 20px; }
+    </style>
+  </head>
+  <body>
+    <header id="sticky-header">Sticky header, z-index 999</header>
+    <main>
+      <div id="plain">No z-index anywhere on this block</div>
+      <div id="tall"></div>
+    </main>
+    <div id="widget">Chat widget, z-index 2147483647</div>
+  </body>
+</html>

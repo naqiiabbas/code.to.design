@@ -1,0 +1,11 @@
+{
+  "name": "@c2d/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch"
+  },
+  "dependencies": { "@c2d/shared": "*" }
+}
