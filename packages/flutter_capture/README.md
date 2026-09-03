@@ -68,7 +68,7 @@ await File('screen.c2d').writeAsString(capture.payload);   // drop this on the p
 | Flutter | Figma |
 | --- | --- |
 | every `RenderBox` | a frame at its exact size and position |
-| `Row`, `Column` | auto layout, with main/cross axis alignment |
+| `Row`, `Column` | auto layout, with main/cross axis alignment and the `spacing:` gap |
 | `BoxDecoration` | fills, border, corner radius, box shadows |
 | `LinearGradient`, `RadialGradient`, `SweepGradient` | linear, radial and angular gradient fills |
 | `Material`, `Card`, `AppBar`, buttons | surface colour, elevation shadow and shape |
@@ -111,6 +111,24 @@ see, and each case needs a different signal:
 | the neighbouring pages of a `PageView`, rows past the end of a list | they fall outside the screen rectangle |
 
 A page behind a **dialog** is kept: its ticker stays enabled and it really is on screen.
+
+**The page background is read, not assumed.** A `Scaffold` paints its background through a
+`Material`, which is a widget with no render object of its own — so a run of inherited
+widgets above it resolves to the same box first and claims it. Styling found further down
+is applied to the layer that was already created, and whatever opaque colour ends up
+covering the whole screen becomes the frame's fill. Without that, every dark-themed app
+arrived in Figma on white.
+
+**Children are ordered by how they are painted, not how they are listed.** The two are not
+the same: `InputDecorator` lists a text field's filled background *last* but paints it
+*first*, so copying child order buries the placeholder underneath its own field. The tree is
+painted once into a throwaway layer purely to record the real order, and siblings are sorted
+by it — but only when every sibling was seen, since a partial order is worse than none.
+
+**Text is left free to size itself.** Figma rarely has the font the app used, and the
+substituted one is usually wider; a text layer with a fixed width then pushes its last word
+onto a second line. A single line is imported hugging its own content so it can never wrap.
+Text that already wraps keeps the width that produced its line breaks and hugs vertically.
 
 ## Testing
 

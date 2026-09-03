@@ -180,8 +180,15 @@ runApp(const CaptureOverlay(child: MyApp()));
 
 Icons and leaf `CustomPaint`s are rasterised to transparent PNGs, since a glyph from an icon
 font would otherwise arrive in Figma as a random letter. Only the screen you are looking at is
-captured: `Navigator` keeps every route you have pushed
-alive in the tree, so each box is asked whether its ancestors actually paint it.
+captured: Flutter keeps a lot alive that nobody can see — routes you pushed over, every tab of a
+bottom navigation bar, rows past the end of a list — and each is filtered out. A page behind a
+dialog is kept, because that one really is on screen.
+
+The screen's own background colour comes across, so a dark-themed app no longer lands on white.
+`Row` and `Column` keep their `spacing:`. Layers are ordered by the order they are actually
+painted in rather than the order they are listed — which is what used to drop a text field's
+fill on top of its own placeholder. And text is imported hugging its content, so a font Figma
+had to substitute cannot make a line wrap.
 
 Press **Capture to Figma**, then `Ctrl+V` on the canvas and run the plugin. Works on Web,
 Windows, macOS, Linux, Android and iOS. `Row`/`Column` become auto layout, `BoxDecoration`

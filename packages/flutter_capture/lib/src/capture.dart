@@ -27,6 +27,13 @@ class FlutterCapture {
   /// The visible area, in global coordinates. Anything outside it is not on
   /// screen and does not belong in the capture.
   Rect _bounds = Rect.zero;
+
+  /// Where each render object falls in the real paint order.
+  final Map<RenderObject, int> _paintOrder = {};
+
+  /// The layer each render object became, so that styling found further down
+  /// the element tree can still be applied to it.
+  final Map<RenderObject, SceneNode> _nodeFor = {};
   int _nodeCounter = 0;
   int _assetCounter = 0;
   int _nodeCount = 0;
@@ -56,7 +63,18 @@ class FlutterCapture {
       ..clipsContent = true;
     _nodeCount++;
 
+    // Child order is not paint order. `InputDecorator` is the clearest case: it
+    // lists its filled background last but paints it first, so following child
+    // order alone drops a text field's fill on top of its own placeholder.
+    _recordPaintOrder(rootBox);
+
     rootElement.visitChildren((child) => _visit(child, rootBox, origin, root));
+
+    // 1. The page background. Whatever opaque colour covers the whole screen is
+    //    the background - reading it beats assuming white, which is wrong for
+    //    every app with a dark theme.
+    final background = _findBackground(root);
+    if (background != null) root.fills = [background];
 
     // Icons and custom painters cannot be described as layers, so each is
     // painted into a layer of its own and encoded as a picture.
@@ -114,6 +132,17 @@ class FlutterCapture {
     // Elements that build other widgets have no render object of their own; walk
     // straight through them so only real boxes become layers.
     if (render is! RenderBox || identical(render, ancestorBox)) {
+      // `renderObject` resolves downwards, so the first such element in a run of
+      // them claims the box below it and everything under it looks like a repeat.
+      // Their styling still belongs on that layer: a `Scaffold` builds its
+      // background as a `Material` sitting under a stack of inherited widgets
+      // that claim the box first, which is why a dark app came through white.
+      if (render is RenderBox && render.hasSize) {
+        final claimed = _nodeFor[render];
+        if (claimed != null && claimed.type == 'FRAME') {
+          _applyWidgetStyle(claimed, element.widget, render.size);
+        }
+      }
       element.visitChildren((child) => _visit(child, ancestorBox, ancestorOrigin, parent));
       return;
     }
@@ -152,7 +181,8 @@ class FlutterCapture {
       y: global.dy - ancestorOrigin.dy,
       width: size.width,
       height: size.height,
-    );
+    )..paintOrder = _paintOrder[render] ?? -1;
+    _nodeFor[render] = node;
     _nodeCount++;
 
     final widget = element.widget;
@@ -180,7 +210,26 @@ class FlutterCapture {
     } else if (render is RenderImage) {
       _applyImage(node, render);
       descend = false;
-    } else if (widget is DecoratedBox) {
+    } else {
+      _applyWidgetStyle(node, widget, size);
+    }
+
+    parent.children.add(node);
+
+    if (descend) {
+      element.visitChildren((child) => _visit(child, render, global, node));
+      _sortByPaintOrder(node);
+    }
+
+    // Auto layout is applied after the children exist, because it needs their ids.
+    if (render is RenderFlex && node.children.isNotEmpty) {
+      _applyFlex(node, render);
+    }
+  }
+
+  /// Everything a widget says about how its box looks.
+  void _applyWidgetStyle(SceneNode node, Widget widget, Size size) {
+    if (widget is DecoratedBox) {
       _applyDecoration(node, widget.decoration, size);
     } else if (widget is ColoredBox) {
       node.fills = [solidPaint(widget.color)];
@@ -202,17 +251,6 @@ class FlutterCapture {
       node.corners = _corners(widget.borderRadius.resolve(TextDirection.ltr));
     } else if (widget is ClipRect || widget is ClipOval || widget is ClipPath) {
       node.clipsContent = true;
-    }
-
-    parent.children.add(node);
-
-    if (descend) {
-      element.visitChildren((child) => _visit(child, render, global, node));
-    }
-
-    // Auto layout is applied after the children exist, because it needs their ids.
-    if (render is RenderFlex && node.children.isNotEmpty) {
-      _applyFlex(node, render);
     }
   }
 
@@ -252,6 +290,80 @@ class FlutterCapture {
       total += _count(child);
     }
     return total;
+  }
+
+  /// Paints the tree into a throwaway layer purely to observe the order in
+  /// which each parent paints its children.
+  void _recordPaintOrder(RenderObject root) {
+    try {
+      final boundaries = <RenderObject>[];
+      _paintInto(root, boundaries);
+      // A repaint boundary is painted through a fresh context, so its children
+      // are not seen by the pass above; visit each one separately.
+      for (var i = 0; i < boundaries.length && i < 500; i++) {
+        _paintInto(boundaries[i], boundaries);
+      }
+    } catch (_) {
+      // Without an order, children keep the order they were visited in.
+    }
+  }
+
+  void _paintInto(RenderObject render, List<RenderObject> boundaries) {
+    final layer = OffsetLayer();
+    try {
+      // ignore: invalid_use_of_protected_member
+      final context = _PaintOrderRecorder(layer, _bounds, _paintOrder, boundaries);
+      render.paint(context, Offset.zero);
+      // ignore: invalid_use_of_protected_member
+      context.stopRecordingIfNeeded();
+    } finally {
+      layer.dispose();
+    }
+  }
+
+  /// Puts a node's children into the order they are actually painted in.
+  ///
+  /// Only when every child was seen: a partial order would shuffle the rest
+  /// arbitrarily, which is worse than leaving them alone.
+  void _sortByPaintOrder(SceneNode node) {
+    if (node.children.length < 2) return;
+    if (node.children.any((child) => child.paintOrder < 0)) return;
+
+    final indexed = [
+      for (var i = 0; i < node.children.length; i++) (node.children[i], i),
+    ]..sort((a, b) {
+        final byPaint = a.$1.paintOrder.compareTo(b.$1.paintOrder);
+        return byPaint != 0 ? byPaint : a.$2.compareTo(b.$2);
+      });
+    node.children = [for (final entry in indexed) entry.$1];
+  }
+
+  /// The opaque colour covering the whole screen, if there is one.
+  Map<String, dynamic>? _findBackground(SceneNode root) {
+    Map<String, dynamic>? found;
+
+    void search(SceneNode node, double x, double y) {
+      final covers = x <= 1 &&
+          y <= 1 &&
+          node.width >= root.width - 1 &&
+          node.height >= root.height - 1;
+      if (covers) {
+        for (final paint in node.fills ?? const <Map<String, dynamic>>[]) {
+          // Later paints sit on top, so the last full-screen opaque one wins.
+          if (paint['type'] == 'SOLID' && (paint['opacity'] as num? ?? 1) > 0.99) {
+            found = paint;
+          }
+        }
+      }
+      for (final child in node.children) {
+        search(child, x + child.x, y + child.y);
+      }
+    }
+
+    for (final child in root.children) {
+      search(child, child.x, child.y);
+    }
+    return found;
   }
 
   /// Whether a widget is showing what is under it.
@@ -366,9 +478,20 @@ class FlutterCapture {
       _ => 'LEFT',
     };
     node.textAlignVertical = 'TOP';
-    node.autoResize = 'NONE';
-    // A hair of slack absorbs metric differences between Flutter and Figma so a
-    // line that just fits does not wrap on import.
+
+    // Figma rarely has the font the app used, and a substituted one is often
+    // wider. With a fixed width that pushes the last word onto a second line, so
+    // a single line is left to size itself and can never wrap. Wrapped text keeps
+    // its measured width - that is what produced the line breaks - and only
+    // hugs vertically.
+    final biggest = segments
+        .map((s) => s['fontSize'] as double)
+        .reduce((a, b) => a > b ? a : b);
+    final wrapped = paragraph.text
+            .toPlainText(includeSemanticsLabels: false, includePlaceholders: false)
+            .contains('\n') ||
+        node.height > biggest * 2;
+    node.autoResize = wrapped ? 'HEIGHT' : 'WIDTH_AND_HEIGHT';
     node.width = node.width + 1;
   }
 
@@ -730,9 +853,9 @@ class FlutterCapture {
         CrossAxisAlignment.baseline => 'BASELINE',
         _ => 'MIN',
       },
-      // Flutter expresses gaps as real SizedBox children, which become real
-      // layers, so the spacing between items is already accounted for.
-      'itemSpacing': 0,
+      // Gaps written as SizedBox children become real layers and are already
+      // accounted for; a `spacing:` argument is not, and has to be read.
+      'itemSpacing': flex.spacing,
       'counterAxisSpacing': 0,
       'wrap': false,
       'padding': {'top': 0, 'right': 0, 'bottom': 0, 'left': 0},
@@ -756,6 +879,23 @@ class FlutterCapture {
 /// Rasterising is bounded: a pathological screen should not turn into hundreds
 /// of screenshots.
 const int _maxRasterRequests = 40;
+
+/// Notes the order children are painted in, without changing what is painted.
+class _PaintOrderRecorder extends PaintingContext {
+  // ignore: invalid_use_of_protected_member
+  _PaintOrderRecorder(super.containerLayer, super.estimatedBounds, this._order, this._boundaries);
+
+  final Map<RenderObject, int> _order;
+  final List<RenderObject> _boundaries;
+  static int _counter = 0;
+
+  @override
+  void paintChild(RenderObject child, Offset offset) {
+    _order[child] = _counter++;
+    if (child.isRepaintBoundary) _boundaries.add(child);
+    super.paintChild(child, offset);
+  }
+}
 
 class _RasterRequest {
   _RasterRequest(this.node, this.render, this.size, this.label);

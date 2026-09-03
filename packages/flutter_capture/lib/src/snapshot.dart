@@ -108,6 +108,10 @@ class SceneNode {
   String? assetId;
   String? scaleMode;
 
+  /// Where this node fell in the real paint order. Used to sort siblings and
+  /// then thrown away - Figma infers z-order from the order of children.
+  int paintOrder = -1;
+
   /// FRAME only.
   List<SceneNode> children = [];
   Map<String, dynamic>? layout;

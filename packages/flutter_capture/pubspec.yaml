@@ -4,7 +4,7 @@ version: 0.1.0
 repository: https://github.com/naqiiabbas/code.to.design
 environment:
   sdk: ">=3.0.0 <4.0.0"
-  flutter: ">=3.16.0"
+  flutter: ">=3.27.0"
 dependencies:
   flutter:
     sdk: flutter
