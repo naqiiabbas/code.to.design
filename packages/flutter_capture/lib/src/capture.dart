@@ -108,6 +108,13 @@ class FlutterCapture {
     }
     if (!render.attached || !render.hasSize) return;
 
+    // Navigator keeps every route it has pushed alive in the tree, so without
+    // this a capture contains every screen the user has visited. Asking the
+    // ancestors whether they actually paint this box is the general answer: it
+    // drops obscured routes and Offstage subtrees, while keeping the page behind
+    // a dialog, which is genuinely on screen.
+    if (!_isPaintedUnder(render, ancestorBox)) return;
+
     final global = _globalOf(render);
     if (global == null) return;
 
@@ -227,6 +234,25 @@ class FlutterCapture {
 
     search(element);
     return found;
+  }
+
+  /// Whether every step between [node] and [ancestor] actually paints the box
+  /// below it. [ancestor] has already been checked, so the walk stops there.
+  bool _isPaintedUnder(RenderObject node, RenderObject ancestor) {
+    RenderObject current = node;
+    var parent = current.parent;
+    while (parent != null) {
+      try {
+        if (!parent.paintsChild(current)) return false;
+      } catch (_) {
+        // Some render objects assert on this outside of a paint phase; assume
+        // painted rather than dropping something real.
+      }
+      if (identical(parent, ancestor)) return true;
+      current = parent;
+      parent = current.parent;
+    }
+    return true;
   }
 
   Offset? _globalOf(RenderBox box) {

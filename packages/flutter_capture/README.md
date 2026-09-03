@@ -92,6 +92,11 @@ unusable one.
 - **Shaders and `BackdropFilter`** are not mapped.
 - **Off-screen content** in a scrollable is not captured; only what is laid out.
 
+**Only the screen you are looking at is captured.** `Navigator` keeps every route you have
+pushed alive in the tree, so the capture asks each box whether its ancestors actually paint
+it. Routes underneath and `Offstage` subtrees are dropped; the page behind a dialog is kept,
+because that one is genuinely on screen.
+
 ## Testing
 
 ```bash
