@@ -23,6 +23,7 @@ class FlutterCapture {
   final Map<String, Set<int>> _fonts = {};
   final List<String> _warnings = [];
   final List<_PendingImage> _pendingImages = [];
+  final List<_RasterRequest> _rasterRequests = [];
   int _nodeCounter = 0;
   int _assetCounter = 0;
   int _nodeCount = 0;
@@ -52,6 +53,10 @@ class FlutterCapture {
     _nodeCount++;
 
     rootElement.visitChildren((child) => _visit(child, rootBox, origin, root));
+
+    // Icons and custom painters cannot be described as layers, so each is
+    // painted into a layer of its own and encoded as a picture.
+    await _rasteriseRequests();
 
     // A Flutter tree is mostly scaffolding - Align, Padding, ConstrainedBox,
     // Semantics - none of which paints anything. Positions are derived from
@@ -140,7 +145,23 @@ class FlutterCapture {
     final widget = element.widget;
     var descend = true;
 
-    if (render is RenderParagraph) {
+    if (render is RenderParagraph && _isIconGlyph(render)) {
+      // An icon is a glyph from an icon font. Kept as text, Figma substitutes a
+      // font nobody has and the icon turns into a random letter, so rasterise it.
+      _requestRaster(node, render, size, 'an icon');
+      descend = false;
+    } else if (render is RenderCustomPaint &&
+        render.child == null &&
+        (render.painter != null || render.foregroundPainter != null)) {
+      // A leaf painter - a chart, a progress ring - cannot be described, but it
+      // can be photographed.
+      //
+      // Only leaves. Framework internals wrap real content in a CustomPaint that
+      // decorates it (`Material` draws its border that way), and rasterising one
+      // of those would swallow the entire subtree underneath into a picture.
+      _requestRaster(node, render, size, 'a CustomPaint');
+      descend = false;
+    } else if (render is RenderParagraph) {
       _applyText(node, render);
       descend = false;
     } else if (render is RenderImage) {
@@ -234,6 +255,36 @@ class FlutterCapture {
 
     search(element);
     return found;
+  }
+
+  /// Icon fonts put their glyphs in a Unicode private-use area, which is what
+  /// tells an icon apart from ordinary text without hard-coding font names.
+  bool _isIconGlyph(RenderParagraph paragraph) {
+    final text = paragraph.text.toPlainText(
+      includeSemanticsLabels: false,
+      includePlaceholders: false,
+    );
+    if (text.isEmpty) return false;
+    for (final rune in text.runes) {
+      final inPrivateUse = (rune >= 0xE000 && rune <= 0xF8FF) ||
+          (rune >= 0xF0000 && rune <= 0xFFFFD) ||
+          (rune >= 0x100000 && rune <= 0x10FFFD);
+      if (!inPrivateUse) return false;
+    }
+    return true;
+  }
+
+  void _requestRaster(SceneNode node, RenderObject render, Size size, String label) {
+    if (_rasterRequests.length >= _maxRasterRequests) {
+      _warn('More than $_maxRasterRequests icons and painters were found; the rest were left blank.');
+      return;
+    }
+    // Claim the type now: the pruning pass drops frames that paint nothing, and
+    // the bytes do not arrive until after the walk.
+    node.type = 'IMAGE';
+    node.scaleMode = 'FILL';
+    node.name = label == 'an icon' ? 'icon' : 'painted';
+    _rasterRequests.add(_RasterRequest(node, render, size, label));
   }
 
   /// Whether every step between [node] and [ancestor] actually paints the box
@@ -350,6 +401,65 @@ class FlutterCapture {
       BoxFit.contain || BoxFit.scaleDown || BoxFit.none => 'FIT',
       _ => 'FILL',
     };
+  }
+
+  /* ------------------------------------------------------------ rasterising */
+
+  /// Paints one render object into a layer of its own, then encodes it.
+  ///
+  /// Photographing the screen and cropping each region out of it looks simpler,
+  /// but does not work: rasterising the root view replays retained engine layers
+  /// and silently omits most of the content. Painting the object directly
+  /// isolates exactly it, needs no crop arithmetic, and leaves real transparency
+  /// around an icon rather than baking in whatever happened to be behind it.
+  ///
+  /// This is what RenderRepaintBoundary.toImage does internally, which is why it
+  /// needs the two members Flutter marks @protected.
+  Future<void> _rasteriseRequests() async {
+    if (_rasterRequests.isEmpty) return;
+
+    // Icons are small, so render above 1x or they arrive soft.
+    final views = ui.PlatformDispatcher.instance.views;
+    final scale = (views.isEmpty ? 2.0 : views.first.devicePixelRatio).clamp(2.0, 3.0);
+
+    for (final request in _rasterRequests) {
+      ui.Image? image;
+      try {
+        image = await _paintToImage(request.render, request.size, scale);
+      } catch (error) {
+        _warn('Could not rasterise ${request.label} ($error).');
+        continue;
+      }
+      if (image == null) continue;
+
+      final data = await _encodePng(image);
+      final width = image.width;
+      final height = image.height;
+      image.dispose();
+      if (data == null) {
+        _warn('Could not encode ${request.label}.');
+        continue;
+      }
+      final id = 'a${++_assetCounter}';
+      _assets[id] = CapturedAsset(id: id, data: data, width: width, height: height);
+      request.node.assetId = id;
+    }
+  }
+
+  Future<ui.Image?> _paintToImage(RenderObject render, Size size, double scale) async {
+    if (size.width <= 0 || size.height <= 0) return null;
+    final bounds = Offset.zero & size;
+    final layer = OffsetLayer();
+    try {
+      // ignore: invalid_use_of_protected_member
+      final context = PaintingContext(layer, bounds);
+      render.paint(context, Offset.zero);
+      // ignore: invalid_use_of_protected_member
+      context.stopRecordingIfNeeded();
+      return await layer.toImage(bounds, pixelRatio: scale);
+    } finally {
+      layer.dispose();
+    }
   }
 
   Future<String?> _encodePng(ui.Image image) async {
@@ -610,6 +720,19 @@ class FlutterCapture {
     if (clean.isEmpty) return 'Text';
     return clean.length > 30 ? '${clean.substring(0, 30)}...' : clean;
   }
+}
+
+/// Rasterising is bounded: a pathological screen should not turn into hundreds
+/// of screenshots.
+const int _maxRasterRequests = 40;
+
+class _RasterRequest {
+  _RasterRequest(this.node, this.render, this.size, this.label);
+
+  final SceneNode node;
+  final RenderObject render;
+  final Size size;
+  final String label;
 }
 
 class _PendingImage {

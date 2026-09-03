@@ -178,7 +178,9 @@ dependencies:
 runApp(const CaptureOverlay(child: MyApp()));
 ```
 
-Only the screen you are looking at is captured: `Navigator` keeps every route you have pushed
+Icons and leaf `CustomPaint`s are rasterised to transparent PNGs, since a glyph from an icon
+font would otherwise arrive in Figma as a random letter. Only the screen you are looking at is
+captured: `Navigator` keeps every route you have pushed
 alive in the tree, so each box is asked whether its ancestors actually paint it.
 
 Press **Capture to Figma**, then `Ctrl+V` on the canvas and run the plugin. Works on Web,

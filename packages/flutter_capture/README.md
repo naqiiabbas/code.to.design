@@ -76,6 +76,8 @@ await File('screen.c2d').writeAsString(capture.payload);   // drop this on the p
 | `Text`, `RichText`, styled `TextSpan` runs | one text layer, per-range font, size, weight, colour, letter spacing, line height, decoration |
 | `Image` | image fills, encoded as lossless PNG |
 | `Opacity`, `Transform`, `ClipRRect`, `ClipRect` | opacity, rotation, corner radius, clipping |
+| `Icon` and other icon-font glyphs | rasterised to a transparent PNG above 1x |
+| a leaf `CustomPaint` (charts, progress rings) | rasterised to a PNG |
 
 **Scaffolding is pruned.** Flutter wraps everything in `Align`, `Padding`, `ConstrainedBox`,
 `Semantics` and friends, none of which paints anything. Because positions are derived from
@@ -86,11 +88,17 @@ unusable one.
 
 ## What does not
 
-- **`CustomPaint`** — an arbitrary painter cannot be read, so it arrives as an empty frame.
-- **Icons** are glyphs from an icon font, so they arrive as text in `MaterialIcons`. Figma
-  will substitute a font unless you have that one installed.
+- **A `CustomPaint` that wraps a child** is not rasterised, because its picture would
+  swallow the content underneath. Only leaf painters are. The framework itself uses the
+  wrapping kind (`Material` draws its border that way), so this matters.
 - **Shaders and `BackdropFilter`** are not mapped.
 - **Off-screen content** in a scrollable is not captured; only what is laid out.
+
+**Icons and custom painters are rasterised.** An icon is a glyph from an icon font; kept as
+text it would arrive in Figma as a random letter unless you happen to have that font
+installed. A `CustomPaint` cannot be described at all. Both are painted into a layer of
+their own and encoded as PNG above 1x, which keeps a transparent background around the
+icon rather than baking in whatever was behind it.
 
 **Only the screen you are looking at is captured.** `Navigator` keeps every route you have
 pushed alive in the tree, so the capture asks each box whether its ancestors actually paint
@@ -102,6 +110,10 @@ because that one is genuinely on screen.
 ```bash
 flutter test
 ```
+
+Capturing a screen with icons or a `CustomPaint` does engine work (encoding a PNG), and the
+fake-async zone a widget test runs in deadlocks on that. Wrap those captures in
+`tester.runAsync(() async { ... })`.
 
 The suite pumps real widget trees — a hand-built one and a realistic Material app — captures
 them, and asserts on the decoded payload: geometry, colours, corner radii, shadows, gradient

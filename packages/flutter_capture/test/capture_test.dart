@@ -268,13 +268,18 @@ void _materialSuite() {
     );
     await tester.pumpAndSettle();
 
-    final result = await captureFlutterApp(label: 'Material');
-    snapshot = decode(result.payload);
-    nodes = flatten((snapshot['frames'] as List).first['root'] as Map<String, dynamic>);
+    // This screen has icons, which are rasterised. Encoding an image is engine
+    // work, and the fake-async zone a widget test runs in deadlocks on it, so the
+    // capture has to happen inside runAsync.
+    await tester.runAsync(() async {
+      final result = await captureFlutterApp(label: 'Material');
+      snapshot = decode(result.payload);
+      nodes = flatten((snapshot['frames'] as List).first['root'] as Map<String, dynamic>);
 
-    File('test/out/material-payload.c2d')
-      ..parent.createSync(recursive: true)
-      ..writeAsStringSync(result.payload);
+      File('test/out/material-payload.c2d')
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync(result.payload);
+    });
   });
 
   test('a Material tree captures without warnings or losses', () {
