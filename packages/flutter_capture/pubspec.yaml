@@ -1,0 +1,13 @@
+name: code_to_design
+description: Capture a running Flutter app as editable Figma layers, using the same clipboard format as the code.to.design Chrome extension.
+version: 0.1.0
+repository: https://github.com/naqiiabbas/code.to.design
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.16.0"
+dependencies:
+  flutter:
+    sdk: flutter
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

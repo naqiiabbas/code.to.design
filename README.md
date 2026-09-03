@@ -2,10 +2,12 @@
 
 # code.to.design
 
-### Convert any website into editable Figma layers — free, unlimited, and open source.
+### Convert any website — or Flutter app — into editable Figma layers.
+### Free, unlimited, and open source.
 
-A **Chrome extension** + **Figma plugin** pair that turns a live web page into real Figma
-frames, auto layout, text, images and vectors. Not a screenshot — every layer is editable.
+A **Chrome extension**, a **Flutter package** and a **Figma plugin** that turn a live UI into
+real Figma frames, auto layout, text, images and vectors. Not a screenshot — every layer is
+editable.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Chrome 116+](https://img.shields.io/badge/Chrome-116%2B-4285F4?logo=googlechrome&logoColor=white)](https://www.google.com/chrome/)
@@ -69,6 +71,7 @@ it wanted to.
 
 - [Install](#install)
 - [How to use it](#how-to-use-it)
+- [Flutter apps](#flutter-apps)
 - [What comes across](#what-comes-across)
 - [What does not](#what-does-not)
 - [FAQ](#faq)
@@ -157,6 +160,34 @@ the canvas to pick up.
 
 ---
 
+## Flutter apps
+
+Flutter Web cannot be captured through Chrome: CanvasKit paints the whole app into one
+`<canvas>` inside a shadow root, so there is no DOM to read. Measured on Flutter 3.44, a
+running app exposes 29 DOM elements, none of them content, and zero text.
+
+So the Flutter half reads Flutter’s **own render tree** instead, which is strictly better:
+exact geometry from `localToGlobal` plus `size`, and widgets that already say what they are.
+It emits the same clipboard payload, so **the Figma plugin imports it unchanged**.
+
+```dart
+dependencies:
+  code_to_design: { path: packages/flutter_capture }
+
+// main.dart — debug builds only, compiled out of release
+runApp(const CaptureOverlay(child: MyApp()));
+```
+
+Press **Capture to Figma**, then `Ctrl+V` on the canvas and run the plugin. Works on Web,
+Windows, macOS, Linux, Android and iOS. `Row`/`Column` become auto layout, `BoxDecoration`
+becomes fills and shadows, `TextStyle` becomes real text styling, and the ~90% of a Flutter
+tree that paints nothing (`Align`, `Padding`, `Semantics`…) is pruned away — a Material
+screen goes from 130 layers to 15 without moving a pixel.
+
+Full details: [packages/flutter_capture](packages/flutter_capture/README.md).
+
+---
+
 ## What comes across
 
 | Web | Figma |
@@ -212,6 +243,10 @@ when it comes up:
 - **Endless feeds** are captured as far as 8 seconds of scrolling reaches. Scroll further
   yourself and capture again for the rest.
 - **Tainted `<canvas>`** (drawn from cross-origin content) cannot be read.
+- **Shadow DOM.** Content inside a shadow root is not traversed yet, so pages built from
+  web components come through as empty boxes.
+- **Canvas-rendered apps** (Unity, `<canvas>`-based editors) have no DOM to read. Flutter is
+  handled separately — see [Flutter apps](#flutter-apps).
 
 ---
 
@@ -249,6 +284,15 @@ Almost certainly not. Figma draws a low-resolution proxy while it catches up on 
 frame, and the more layers a frame holds, the longer that takes. Wait a few seconds after
 zooming, or export the frame as PNG at 2x/4x — the export is the file's real quality.
 
+**Can it capture a Flutter Web app (or Unity, or a canvas-based editor)?**
+Not as editable layers, no. Modern Flutter Web renders everything with CanvasKit into a
+single `<canvas>` inside a shadow root — measured on Flutter 3.44, a running app exposes 29
+DOM elements, none of them content, and zero text. There is simply nothing to read: no
+boxes, no fonts, no colours, just painted pixels. The same is true of any canvas-rendered
+app. A capture of one currently produces a handful of empty frames. Design-to-code tools can
+go the other way; going from a canvas back to structured layers is not something the DOM can
+answer.
+
 **Can I use it with Figma in a browser?**
 The plugin needs the Figma **desktop app**, because that is where development plugins run.
 The Chrome extension side works anywhere.
@@ -270,6 +314,7 @@ packages/extension/       MV3 Chrome extension
   src/popup/              React popup (viewports, themes, the two capture buttons)
   src/background/         orchestration, DevTools emulation, image fetching, clipboard
   src/capture/            the DOM walker injected into the page
+packages/flutter_capture/ Dart package: walks Flutter’s render tree, same payload
 packages/figma-plugin/    Figma plugin
   src/ui/                 React iframe: paste, decode, options
   src/code/               sandbox: font resolution and node construction
@@ -303,6 +348,7 @@ npm run build:plugin # plugin only
 npm run typecheck    # all packages
 npm test             # unit + end-to-end tests (drives real Chrome)
 npm run test:e2e     # end-to-end only
+npm run test:flutter # the Dart package (needs Flutter installed)
 npm run package      # zip both dist folders into release/
 ```
 
@@ -332,7 +378,7 @@ Good first issues: CSS grid → auto layout, `<li>` list markers, in-flow pseudo
 
 <div align="center">
 
-**Keywords:** html to figma · website to figma · web page to figma · convert website to figma ·
+**Keywords:** flutter to figma · html to figma · website to figma · web page to figma · convert website to figma ·
 import website into figma · figma plugin · chrome extension · design to code · web to design ·
 open source html.to.design alternative · free website to figma converter
 

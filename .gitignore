@@ -3,3 +3,9 @@ dist/
 *.log
 .DS_Store
 release/
+
+# Dart / Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+packages/flutter_capture/pubspec.lock
