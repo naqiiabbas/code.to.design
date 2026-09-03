@@ -105,8 +105,10 @@ class _CaptureOverlayState extends State<CaptureOverlay> {
       _status = 'Capturing…';
     });
     try {
-      // Hide the button first: it is not part of the design.
-      _hidden = true;
+      // Hide the button first: it is not part of the design, and the capture
+      // reads the live tree. This needs setState and a frame to actually take
+      // effect - just flipping the field would leave the button in the capture.
+      setState(() => _hidden = true);
       await _nextFrame();
       final result = await captureFlutterAppToClipboard(label: widget.label);
       setState(() {
@@ -115,11 +117,27 @@ class _CaptureOverlayState extends State<CaptureOverlay> {
     } catch (error) {
       setState(() => _status = 'Capture failed: $error');
     } finally {
-      _hidden = false;
-      if (mounted) setState(() => _busy = false);
-      await Future<void>.delayed(const Duration(seconds: 4));
-      if (mounted) setState(() => _status = null);
+      if (mounted) {
+        setState(() {
+          _hidden = false;
+          _busy = false;
+        });
+      }
+      // A cancellable timer rather than an awaited delay: the capture call should
+      // not stay open for four seconds, and the toast must not outlive the widget.
+      _statusTimer?.cancel();
+      _statusTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted) setState(() => _status = null);
+      });
     }
+  }
+
+  Timer? _statusTimer;
+
+  @override
+  void dispose() {
+    _statusTimer?.cancel();
+    super.dispose();
   }
 
   bool _hidden = false;
@@ -135,18 +153,31 @@ class _CaptureOverlayState extends State<CaptureOverlay> {
   Widget build(BuildContext context) {
     if (!_enabled) return widget.child;
 
-    return Stack(
+    // This wrapper sits above MaterialApp, so there is no Directionality or
+    // MediaQuery inherited from anywhere: the overlay has to bring its own.
+    // Without it, the button's Column throws during layout and nothing appears.
+    final insets = MediaQuery.maybeOf(context)?.padding ?? EdgeInsets.zero;
+
+    return Directionality(
       textDirection: TextDirection.ltr,
-      children: [
-        widget.child,
-        if (!_hidden)
-          Positioned.fill(
-            child: IgnorePointer(
-              ignoring: false,
+      child: Stack(
+        // Tight constraints, so the wrapped app fills the screen exactly as it
+        // would have without this wrapper.
+        fit: StackFit.expand,
+        children: [
+          widget.child,
+          if (!_hidden)
+            Positioned.fill(
               child: Align(
                 alignment: widget.alignment,
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  // Keep clear of notches, home indicators and nav bars.
+                  padding: EdgeInsets.only(
+                    left: insets.left + 16,
+                    right: insets.right + 16,
+                    top: insets.top + 16,
+                    bottom: insets.bottom + 16,
+                  ),
                   child: _CaptureButton(
                     busy: _busy,
                     status: _status,
@@ -155,8 +186,8 @@ class _CaptureOverlayState extends State<CaptureOverlay> {
                 ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
