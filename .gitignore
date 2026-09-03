@@ -9,3 +9,4 @@ release/
 .flutter-plugins
 .flutter-plugins-dependencies
 packages/flutter_capture/pubspec.lock
+packages/flutter_capture/build/

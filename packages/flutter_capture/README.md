@@ -92,7 +92,7 @@ unusable one.
   swallow the content underneath. Only leaf painters are. The framework itself uses the
   wrapping kind (`Material` draws its border that way), so this matters.
 - **Shaders and `BackdropFilter`** are not mapped.
-- **Off-screen content** in a scrollable is not captured; only what is laid out.
+- **Off-screen content** in a scrollable is not captured. Scroll to what you want first.
 
 **Icons and custom painters are rasterised.** An icon is a glyph from an icon font; kept as
 text it would arrive in Figma as a random letter unless you happen to have that font
@@ -100,10 +100,17 @@ installed. A `CustomPaint` cannot be described at all. Both are painted into a l
 their own and encoded as PNG above 1x, which keeps a transparent background around the
 icon rather than baking in whatever was behind it.
 
-**Only the screen you are looking at is captured.** `Navigator` keeps every route you have
-pushed alive in the tree, so the capture asks each box whether its ancestors actually paint
-it. Routes underneath and `Offstage` subtrees are dropped; the page behind a dialog is kept,
-because that one is genuinely on screen.
+**Only the screen you are looking at is captured.** Flutter keeps a lot alive that nobody can
+see, and each case needs a different signal:
+
+| What is hidden | How it is detected |
+| --- | --- |
+| a route you pushed over | its `TickerMode` is disabled. On iOS the covered page is *slid aside*, not faded, so it stays painted and still overlaps the screen — no render-tree signal catches it |
+| a tab of a bottom navigation bar | `IndexedStack` wraps each one in `Visibility`, and they all sit at identical coordinates |
+| an `Offstage` or zero-opacity branch | its parent declines to paint it |
+| the neighbouring pages of a `PageView`, rows past the end of a list | they fall outside the screen rectangle |
+
+A page behind a **dialog** is kept: its ticker stays enabled and it really is on screen.
 
 ## Testing
 

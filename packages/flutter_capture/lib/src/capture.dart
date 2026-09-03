@@ -24,6 +24,9 @@ class FlutterCapture {
   final List<String> _warnings = [];
   final List<_PendingImage> _pendingImages = [];
   final List<_RasterRequest> _rasterRequests = [];
+  /// The visible area, in global coordinates. Anything outside it is not on
+  /// screen and does not belong in the capture.
+  Rect _bounds = Rect.zero;
   int _nodeCounter = 0;
   int _assetCounter = 0;
   int _nodeCount = 0;
@@ -39,6 +42,7 @@ class FlutterCapture {
     }
 
     final origin = _globalOf(rootBox) ?? Offset.zero;
+    _bounds = origin & rootBox.size;
     final root = SceneNode(
       id: 'root',
       name: label,
@@ -103,6 +107,8 @@ class FlutterCapture {
   /* ------------------------------------------------------------------ walk */
 
   void _visit(Element element, RenderBox ancestorBox, Offset ancestorOrigin, SceneNode parent) {
+    if (!_isShowing(element.widget)) return;
+
     final render = element.renderObject;
 
     // Elements that build other widgets have no render object of their own; walk
@@ -124,6 +130,13 @@ class FlutterCapture {
     if (global == null) return;
 
     final size = render.size;
+
+    // Painted, but not where anyone can see it. A route that has been pushed
+    // over slides off to the side on iOS rather than fading out, so it stays
+    // "painted" forever; the same goes for a carousel's neighbouring pages.
+    // Nothing below an off-screen box can be on screen either.
+    if (size.width > 0 && size.height > 0 && !_bounds.overlaps(global & size)) return;
+
     if (size.width <= 0 || size.height <= 0) {
       // A zero-size box still positions its children; hoist them up rather than
       // emitting a layer Figma would reject.
@@ -239,6 +252,24 @@ class FlutterCapture {
       total += _count(child);
     }
     return total;
+  }
+
+  /// Whether a widget is showing what is under it.
+  ///
+  /// Two signals, both public API and both checked above the render tree:
+  ///
+  ///  - `TickerMode(enabled: false)` marks a route the navigator has covered.
+  ///    A pushed-over page keeps being laid out and, on iOS, is only slid aside
+  ///    rather than faded, so it stays "painted" and overlapping the screen -
+  ///    nothing in the render tree says it is hidden. A page behind a *dialog*
+  ///    keeps its ticker enabled, and is correctly kept: it really is on screen.
+  ///  - `Visibility(visible: false)` marks a hidden branch. `IndexedStack` wraps
+  ///    every tab in one, which is how a bottom navigation bar keeps all of its
+  ///    tabs alive at the same coordinates.
+  bool _isShowing(Widget widget) {
+    if (widget is TickerMode) return widget.enabled;
+    if (widget is Visibility) return widget.visible;
+    return true;
   }
 
   RenderBox? _firstBox(Element element) {
