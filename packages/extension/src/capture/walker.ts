@@ -510,7 +510,9 @@ function replacedNode(
   if (el instanceof HTMLImageElement) {
     const src = el.currentSrc || el.src;
     if (!src) return { ...base, type: 'FRAME', children: [], fills: [] } as FrameNode;
-    const assetId = registry.request(src);
+    // The browser loads whatever suits the current display; Figma should get
+    // the sharpest source on offer, with the loaded one kept as a fallback.
+    const assetId = registry.request(bestImageSource(el, src), src);
     if (!assetId) return null;
     const image: ImageNode = {
       ...base,
@@ -549,6 +551,43 @@ function replacedNode(
   }
 
   return null;
+}
+
+/**
+ * Picks the highest-resolution candidate from an <img>'s own srcset.
+ *
+ * Only `srcset` on the image itself is considered, never `<picture><source>`:
+ * those exist for art direction, so a different source can be a deliberately
+ * different crop rather than the same picture at another size.
+ */
+function bestImageSource(img: HTMLImageElement, loaded: string): string {
+  const srcset = img.srcset;
+  if (!srcset) return loaded;
+
+  const basis = img.naturalWidth || img.width || img.clientWidth || 1;
+  let best = loaded;
+  let bestScore = img.naturalWidth || basis;
+
+  for (const entry of srcset.split(',')) {
+    const parts = entry.trim().split(/s+/);
+    if (!parts[0]) continue;
+    let url: string;
+    try {
+      url = new URL(parts[0], document.baseURI).href;
+    } catch {
+      continue;
+    }
+    const descriptor = parts[1] ?? '1x';
+    const value = parseFloat(descriptor);
+    if (!Number.isFinite(value) || value <= 0) continue;
+    // Normalise "2x" against the rendered width so it can be compared with "800w".
+    const score = descriptor.endsWith('w') ? value : value * basis;
+    if (score > bestScore) {
+      bestScore = score;
+      best = url;
+    }
+  }
+  return best;
 }
 
 function objectFitToScaleMode(fit: string): 'FILL' | 'FIT' | 'CROP' | 'TILE' {
@@ -646,10 +685,15 @@ function formControl(
   return frame;
 }
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
 function serializeSvg(svg: SVGSVGElement): string {
   const clone = svg.cloneNode(true) as SVGSVGElement;
   if (!clone.getAttribute('xmlns')) clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  // Order matters: baking pairs the original and the clone up by index, so it
+  // has to happen before anything is added to the clone.
   bakeCurrentColor(svg, clone);
+  inlineExternalRefs(svg, clone);
   const rect = svg.getBoundingClientRect();
   if (!clone.getAttribute('viewBox') && rect.width && rect.height) {
     clone.setAttribute('viewBox', `0 0 ${rect.width} ${rect.height}`);
@@ -657,6 +701,78 @@ function serializeSvg(svg: SVGSVGElement): string {
   clone.setAttribute('width', String(Math.max(rect.width, 1)));
   clone.setAttribute('height', String(Math.max(rect.height, 1)));
   return new XMLSerializer().serializeToString(clone);
+}
+
+/**
+ * Icon sprites live once in the document and are pulled in with
+ * `<use href="#id">`; gradients, masks and filters are referenced the same way
+ * with `url(#id)`. Serialising the `<svg>` on its own leaves those references
+ * dangling, and Figma imports an empty or mangled icon. Copy whatever they point
+ * at into the markup so it stands alone.
+ */
+function inlineExternalRefs(original: SVGSVGElement, clone: SVGSVGElement): void {
+  const paintedColor = resolveColor(getComputedStyle(original).color);
+  const replacement = paintedColor && paintedColor.a > 0.001 ? rgbString(paintedColor) : null;
+
+  // A referenced symbol can itself reference more, so resolve until it settles.
+  for (let pass = 0; pass < 4; pass++) {
+    const missing = referencedIds(clone).filter((id) => !hasId(clone, id));
+    if (!missing.length) return;
+
+    let defs = clone.querySelector('defs');
+    if (!defs) {
+      defs = document.createElementNS(SVG_NS, 'defs');
+      clone.insertBefore(defs, clone.firstChild);
+    }
+
+    let added = 0;
+    for (const id of missing) {
+      const source = document.getElementById(id);
+      if (!source) continue;
+      const copy = source.cloneNode(true) as Element;
+      // The symbol is never rendered itself, so `currentColor` inside it has no
+      // computed value to read; use the colour at the point of use.
+      if (replacement) {
+        for (const el of [copy, ...Array.from(copy.querySelectorAll('*'))]) {
+          for (const attr of PAINT_ATTRS) {
+            if (/^currentcolor$/i.test(el.getAttribute(attr) ?? '')) el.setAttribute(attr, replacement);
+          }
+          const style = el.getAttribute('style');
+          if (style && /currentcolor/i.test(style)) {
+            el.setAttribute('style', style.replace(/currentcolor/gi, replacement));
+          }
+        }
+      }
+      defs.appendChild(copy);
+      added++;
+    }
+    if (!added) return;
+  }
+}
+
+function hasId(root: Element, id: string): boolean {
+  if (root.getAttribute('id') === id) return true;
+  try {
+    return Boolean(root.querySelector(`#${CSS.escape(id)}`));
+  } catch {
+    return false;
+  }
+}
+
+/** Every local `#id` an element tree points at, via href or url(#id). */
+function referencedIds(root: Element): string[] {
+  const ids = new Set<string>();
+  for (const el of [root, ...Array.from(root.querySelectorAll('*'))]) {
+    for (const attr of Array.from(el.attributes)) {
+      const value = attr.value;
+      if (!value) continue;
+      if ((attr.localName === 'href' || attr.name === 'xlink:href') && value.startsWith('#')) {
+        ids.add(value.slice(1));
+      }
+      for (const match of value.matchAll(/url\(\s*['"]?#([^'")\s]+)/g)) ids.add(match[1]);
+    }
+  }
+  return [...ids];
 }
 
 const PAINT_ATTRS = ['fill', 'stroke', 'stop-color', 'flood-color', 'lighting-color'];

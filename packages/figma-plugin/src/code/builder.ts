@@ -345,9 +345,11 @@ function buildSvg(node: C2DSvg, ctx: BuildContext): SceneNode | null {
   created.name = node.name;
   created.fills = [];
   if (created.width > 0 && created.height > 0) {
-    // createNodeFromSvg honours the SVG's own size; rescale to the measured box.
-    created.rescale(Math.max(node.width / created.width, 0.01));
-    resize(created, node.width, node.height);
+    // createNodeFromSvg honours the SVG's own size. Scale it uniformly to fit
+    // the measured box: forcing both axes would squash any icon whose aspect
+    // ratio differs from its CSS box.
+    const factor = Math.min(node.width / created.width, node.height / created.height);
+    created.rescale(Math.max(factor, 0.01));
   }
   if (node.opacity !== undefined) created.opacity = node.opacity;
   if (node.effects?.length) created.effects = node.effects.map(toEffect);

@@ -2,6 +2,11 @@
  * Image fetching lives in the service worker on purpose: it has host permissions
  * for every origin, so cross-origin images come back as real bytes instead of
  * tainting a canvas the way a page-side fetch would.
+ *
+ * Nothing here is ever re-compressed lossily. The bytes the site served are
+ * handed through untouched whenever Figma can read them, and anything else is
+ * decoded and re-encoded as lossless PNG. That costs payload size and buys
+ * pixel-exact images that stay sharp however far you zoom in Figma.
  */
 
 export type FetchedAsset =
@@ -12,12 +17,18 @@ export type FetchedAsset =
 /** Figma's createImage() accepts PNG, JPEG and GIF only - never WebP or AVIF. */
 const FIGMA_SAFE = new Set(['image/png', 'image/jpeg', 'image/gif']);
 
-const PNG_REENCODE_THRESHOLD = 400 * 1024;
+/** Figma will not accept an image larger than this on either axis. */
+export const FIGMA_MAX_DIMENSION = 4096;
 
-export async function fetchAsset(url: string, maxDimension = 2400): Promise<FetchedAsset> {
+export async function fetchAsset(
+  url: string,
+  maxDimension = FIGMA_MAX_DIMENSION,
+  fallbackUrl?: string,
+): Promise<FetchedAsset> {
   try {
-    const response = await fetch(url, { credentials: 'include', cache: 'force-cache' });
-    if (!response.ok) return { kind: 'error', message: `HTTP ${response.status}` };
+    const response = await fetchFirstAvailable(url, fallbackUrl);
+    if (!response) return { kind: 'error', message: 'The image could not be fetched.' };
+
     const blob = await response.blob();
     const mime = (blob.type || guessMime(url)).split(';')[0];
 
@@ -27,33 +38,33 @@ export async function fetchAsset(url: string, maxDimension = 2400): Promise<Fetc
     }
 
     const bitmap = await createImageBitmap(blob);
-    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+    const limit = Math.min(maxDimension, FIGMA_MAX_DIMENSION);
+    const scale = Math.min(1, limit / Math.max(bitmap.width, bitmap.height));
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
-    const untouched = scale === 1 && FIGMA_SAFE.has(mime);
 
-    if (untouched && blob.size < PNG_REENCODE_THRESHOLD) {
+    // Nothing to do: hand back the exact bytes, at any size. Re-encoding a JPEG
+    // would only add a second generation of loss, and re-encoding a PNG would
+    // gain nothing at all.
+    if (scale === 1 && FIGMA_SAFE.has(mime)) {
       bitmap.close();
       return { kind: 'raster', mime, data: await blobToBase64(blob), width, height };
     }
 
+    // Either the format is one Figma cannot read (WebP, AVIF) or the image is
+    // larger than Figma allows. Decode once, re-encode losslessly.
     const canvas = new OffscreenCanvas(width, height);
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const ctx = canvas.getContext('2d');
     if (!ctx) {
       bitmap.close();
       return { kind: 'error', message: 'No 2D context available' };
     }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(bitmap, 0, 0, width, height);
     bitmap.close();
 
-    const transparent = hasAlpha(ctx, width, height);
-    let out = await canvas.convertToBlob({ type: transparent ? 'image/png' : 'image/jpeg', quality: 0.86 });
-    if (transparent && out.size > PNG_REENCODE_THRESHOLD * 2) {
-      // Large translucent images are usually photos with a soft edge; PNG is the
-      // wrong tool and blows up the clipboard payload.
-      const flattened = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.82 });
-      if (flattened.size < out.size / 2) out = flattened;
-    }
+    const out = await canvas.convertToBlob({ type: 'image/png' });
     return {
       kind: 'raster',
       mime: out.type || 'image/png',
@@ -66,18 +77,22 @@ export async function fetchAsset(url: string, maxDimension = 2400): Promise<Fetc
   }
 }
 
-/** Samples the alpha channel; a full scan is wasted work on large images. */
-function hasAlpha(ctx: OffscreenCanvasRenderingContext2D, width: number, height: number): boolean {
-  try {
-    const data = ctx.getImageData(0, 0, width, height).data;
-    const stride = Math.max(4, Math.floor(data.length / 4 / 4096) * 4);
-    for (let i = 3; i < data.length; i += stride) {
-      if (data[i] < 250) return true;
+/**
+ * The caller may ask for a higher-resolution source than the browser itself
+ * chose. If that one will not load, fall back to the source actually on the
+ * page, so reaching for a sharper image can never cost us the image.
+ */
+async function fetchFirstAvailable(url: string, fallbackUrl?: string): Promise<Response | null> {
+  const candidates = fallbackUrl && fallbackUrl !== url ? [url, fallbackUrl] : [url];
+  for (const candidate of candidates) {
+    try {
+      const response = await fetch(candidate, { credentials: 'include', cache: 'force-cache' });
+      if (response.ok) return response;
+    } catch {
+      /* try the next candidate */
     }
-    return false;
-  } catch {
-    return true;
   }
+  return null;
 }
 
 async function blobToBase64(blob: Blob): Promise<string> {

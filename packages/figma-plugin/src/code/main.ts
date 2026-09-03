@@ -136,7 +136,18 @@ figma.ui.onmessage = async (message: unknown) => {
 
     figma.ui.postMessage({ type: 'done', report });
 
-    const summary = `Imported ${report.frames} frame${report.frames === 1 ? '' : 's'} · ${report.layers} layers`;
+    let summary = `Imported ${report.frames} frame${report.frames === 1 ? '' : 's'} · ${report.layers} layers`;
+    if (report.substitutions.length) {
+      // Worth saying out loud: substituted type is the usual reason an import
+      // "looks wrong", and on the paste-and-run path the panel never opens to
+      // show the list.
+      const swapped = report.substitutions
+        .map((entry) => entry.split(' -> ')[0])
+        .filter((family, i, list) => list.indexOf(family) === i);
+      const named = swapped.slice(0, 2).join(', ');
+      const rest = swapped.length - Math.min(swapped.length, 2);
+      summary += ` · ${swapped.length} font${swapped.length === 1 ? '' : 's'} substituted (${named}${rest ? ` +${rest}` : ''}) — install them locally for an exact match`;
+    }
     if (autoImporting) {
       // Clear the pasted payload layer, then get out of the way entirely.
       try {

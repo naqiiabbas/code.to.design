@@ -225,3 +225,30 @@ test('currentColor in an inline SVG is baked to plain rgb', () => {
   // Both the attribute and the inline style should have been rewritten.
   assert.equal((icon.svg.match(/rgb\(/g) ?? []).length, 2, 'only one of the two paints was baked');
 });
+
+test('a sprite icon is inlined so it does not import as an empty shape', () => {
+  // <use href="#id"> points at a symbol defined elsewhere in the document. Left
+  // dangling, Figma imports a mangled or empty icon.
+  const icon = all().find((n) => n.name === 'svg#sprite-icon');
+  assert.ok(icon, 'the sprite icon was not captured');
+  assert.equal(icon.type, 'SVG');
+  assert.ok(/<symbol\b/.test(icon.svg), `the referenced symbol was not inlined: ${icon.svg}`);
+  const shapes = (icon.svg.match(/<rect\b/g) ?? []).length;
+  assert.equal(shapes, 2, `expected the symbol's two rects, got ${shapes}: ${icon.svg}`);
+  assert.ok(!/currentcolor/i.test(icon.svg), 'currentColor inside the symbol was left unresolved');
+
+  const [r, g, b] = oklch(0.546, 0.245, 262.881);
+  assert.ok(
+    icon.svg.includes(`rgb(${r}, ${g}, ${b})`),
+    `the symbol did not take the colour at the point of use: ${icon.svg}`,
+  );
+});
+
+test('a gradient defined outside the icon is inlined too', () => {
+  const icon = all().find((n) => n.name === 'svg#shared-grad-icon');
+  assert.ok(icon, 'the shared-gradient icon was not captured');
+  assert.ok(
+    /<linearGradient\b/.test(icon.svg),
+    `url(#id) pointed outside the markup and was not resolved: ${icon.svg}`,
+  );
+});

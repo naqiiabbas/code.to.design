@@ -106,7 +106,7 @@ Capturing with `Browser` + `Browser theme` never attaches at all.
 | `box-shadow`, `text-shadow`, `filter: blur`, `backdrop-filter: blur` | drop/inner shadows, layer blur, background blur |
 | text with mixed inline styling | one text layer with per-range font, size, weight, colour, spacing, decoration, case |
 | `background-clip: text` gradient headings | gradient text fills |
-| `<img>`, `<canvas>`, `<video>` frames, CSS `url()` | image fills (re-encoded to PNG/JPEG, which is all Figma accepts) |
+| `<img>`, `<canvas>`, `<video>` frames, CSS `url()` | image fills, pixel-exact — nothing is ever lossily re-compressed |
 | inline `<svg>` and `.svg` sources | real vector layers |
 | `<a href>` | Figma hyperlinks |
 | `opacity`, `mix-blend-mode`, `transform: rotate()` | opacity, blend mode, rotation |
@@ -117,6 +117,8 @@ Capturing with `Browser` + `Browser theme` never attaches at all.
 Anything with its own scrollbar is temporarily grown to its full content before the capture, so a dropdown showing 3 of 10 rows arrives in Figma with all 10 and a frame tall enough to hold them. The expansion happens in the page and the browser re-runs layout, so ancestors resize and following content moves down exactly as it would have; the page is restored afterwards.
 
 Colours are resolved by painting a pixel and reading it back, not by parsing the string `getComputedStyle` returns. That is the only approach that handles `oklch` (Tailwind v4’s whole palette), `lab`, `lch`, `oklab`, `color(srgb ...)`, `display-p3` and `color-mix()` — Chrome hands all of those back verbatim, and so does canvas `fillStyle`.
+
+Images are never re-compressed. PNG, JPEG and GIF are handed to Figma as the exact bytes the site served; WebP and AVIF (which Figma cannot read) are decoded and re-encoded as **lossless** PNG, adding zero error. Sources are capped at 4096px, which is Figma’s own limit, and an `<img>` with a `srcset` is fetched at its highest-resolution candidate rather than whichever one your display happened to load. Emulated viewports render at 2x so retina assets and canvases are picked up. All of that costs payload size — a lossy WebP can triple as lossless PNG — which is the price of exact pixels.
 
 Fonts are matched by family and numeric weight against what Figma actually has installed,
 falling back through the CSS font stack and then to Inter. The plugin lists every

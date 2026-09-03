@@ -34,7 +34,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   switch (message.type) {
     case 'fetch-asset':
-      fetchAsset(message.url, message.maxDimension)
+      fetchAsset(message.url, message.maxDimension, message.fallbackUrl)
         .then(sendResponse)
         .catch((err) => sendResponse({ kind: 'error', message: String(err) }));
       return true;
@@ -74,7 +74,7 @@ chrome.commands.onCommand.addListener(async (command) => {
     mode: command === 'capture-selection' ? 'selection' : 'page',
     viewports: [0],
     themes: ['browser'],
-    maxImageDimension: 2400,
+    maxImageDimension: 4096,
     ...(stored.options as Partial<CaptureOptions> | undefined),
   };
   options.mode = command === 'capture-selection' ? 'selection' : 'page';
@@ -305,7 +305,10 @@ async function applyEmulation(tabId: number, viewport: number, theme: ThemeId): 
       // A tall window keeps sticky headers and viewport-unit layouts sane; the
       // capture reads the real scroll height anyway.
       height: 1200,
-      deviceScaleFactor: 1,
+      // Render at 2x so the page picks its high-density images and any
+      // canvas draws at retina resolution. Layout is in CSS pixels either
+      // way, so nothing about the captured geometry changes.
+      deviceScaleFactor: 2,
       mobile: false,
       screenWidth: viewport,
       screenHeight: 1200,

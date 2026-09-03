@@ -28,17 +28,21 @@ export class AssetRegistry {
   readonly assets: Record<string, Asset> = {};
   readonly warnings: string[] = [];
 
-  constructor(private maxDimension = 2400) {}
+  constructor(private maxDimension = 4096) {}
 
-  /** Returns a stable asset id for a URL, queueing the fetch if it is new. */
-  request(url: string): string | null {
+  /**
+   * Returns a stable asset id for a URL, queueing the fetch if it is new.
+   * `fallbackUrl` is the source the browser actually loaded, used only when the
+   * preferred (usually higher-resolution) one will not load.
+   */
+  request(url: string, fallbackUrl?: string): string | null {
     if (!url) return null;
     const key = url;
     const existing = this.byKey.get(key);
     if (existing) return existing;
     const id = `a${++counter}`;
     this.byKey.set(key, id);
-    this.pending.set(id, this.load(url));
+    this.pending.set(id, this.load(url, fallbackUrl));
     return id;
   }
 
@@ -49,7 +53,7 @@ export class AssetRegistry {
     return id;
   }
 
-  private async load(url: string): Promise<FetchedAsset> {
+  private async load(url: string, fallbackUrl?: string): Promise<FetchedAsset> {
     if (url.startsWith('data:')) {
       const parsed = parseDataUrl(url);
       if (parsed) return parsed;
@@ -58,6 +62,7 @@ export class AssetRegistry {
       const response = await chrome.runtime.sendMessage({
         type: 'fetch-asset',
         url,
+        fallbackUrl,
         maxDimension: this.maxDimension,
       });
       return (response as FetchedAsset) ?? { kind: 'error', message: 'No response' };

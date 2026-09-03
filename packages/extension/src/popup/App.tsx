@@ -108,7 +108,7 @@ export function App() {
       mode,
       viewports: chosen.map((id) => viewports.find((v) => v.id === id)?.width ?? 0),
       themes,
-      maxImageDimension: 2400,
+      maxImageDimension: 4096,
     };
 
     if (mode === 'selection') {

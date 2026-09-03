@@ -99,5 +99,21 @@
         <path d="M8 12l3 3 5-6" style="stroke: currentColor" />
       </svg>
     </span>
+
+    <!-- A sprite icon: the shape lives once in the document and is pulled in
+         by reference, which is how most icon systems work. -->
+    <svg width="0" height="0" style="position:absolute"><defs>
+      <symbol id="sprite-columns" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="6" height="16" fill="none" stroke="currentColor" stroke-width="2"/>
+        <rect x="13" y="4" width="8" height="16" fill="none" stroke="currentColor" stroke-width="2"/>
+      </symbol>
+      <linearGradient id="shared-grad"><stop offset="0" stop-color="#f00"/><stop offset="1" stop-color="#00f"/></linearGradient>
+    </defs></svg>
+    <span style="color: var(--blue-600)">
+      <svg id="sprite-icon" width="24" height="24"><use href="#sprite-columns"/></svg>
+    </span>
+    <svg id="shared-grad-icon" width="24" height="24" viewBox="0 0 24 24">
+      <rect width="24" height="24" fill="url(#shared-grad)"/>
+    </svg>
   </body>
 </html>

@@ -497,3 +497,32 @@ test('the wrapped payload survives being pasted as a Figma text layer', async ()
   const decoded = await decodePayload(payloadText);
   assert.equal(decoded.frames.length, 1, 'the wrapped payload did not round-trip');
 });
+
+test('font substitutions are named in the notification, not just the panel', async () => {
+  // On the paste-and-run path the panel never opens, so the toast is the only
+  // place the user learns their type was swapped - the usual reason an import
+  // "looks wrong" while being perfectly sharp.
+  const original = snapshot;
+  try {
+    snapshot = JSON.parse(JSON.stringify(original));
+    for (const node of walk(snapshot.frames[0].root)) {
+      if (node.type !== 'TEXT') continue;
+      for (const segment of node.segments) {
+        segment.fontFamily = 'Untitled Sans';
+        segment.fontStack = ['Untitled Sans', 'sans-serif'];
+      }
+    }
+    const run = await runImport({ autoLayout: true, groupFrames: true, keepLinks: true });
+    const [notice] = run.mock.figma.__notifications;
+    assert.ok(notice, 'no completion notice at all');
+    assert.ok(/font.*substituted/i.test(notice.message), `substitutions not mentioned: "${notice.message}"`);
+    assert.ok(notice.message.includes('Untitled Sans'), `the swapped family was not named: "${notice.message}"`);
+  } finally {
+    snapshot = original;
+  }
+});
+
+test('a clean import says nothing about fonts', async () => {
+  const [notice] = withLayout.mock.figma.__notifications;
+  assert.ok(!/substituted/i.test(notice.message), `noise on a clean import: "${notice.message}"`);
+});
