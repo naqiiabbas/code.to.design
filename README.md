@@ -2,7 +2,7 @@
 
 # code.to.design
 
-### Convert any website — or Flutter app — into editable Figma layers.
+### Convert any website or Flutter app into editable Figma layers.
 ### Free, unlimited, and open source.
 
 A **Chrome extension**, a **Flutter package** and a **Figma plugin** that turn a live UI into
