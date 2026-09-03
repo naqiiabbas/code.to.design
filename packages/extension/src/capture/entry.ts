@@ -48,30 +48,101 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const settleLayout = () =>
   new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
-/** Scrolls the page end to end so lazy-loaded images and IO-triggered UI render. */
-async function primeLazyContent(): Promise<void> {
-  const originalX = window.scrollX;
-  const originalY = window.scrollY;
-  const total = Math.max(
-    document.documentElement.scrollHeight,
-    document.body?.scrollHeight ?? 0,
-  );
-  const step = Math.max(window.innerHeight * 0.8, 200);
+/** Priming must never hold the capture hostage on an endless page. */
+const PRIME_BUDGET_MS = 8000;
+const PRIME_MAX_STEPS = 80;
 
+/**
+ * Finds everything that actually scrolls, largest first.
+ *
+ * Scrolling the window is not enough: plenty of applications give html and body
+ * a fixed height and scroll an inner element instead, and there `window.scrollTo`
+ * does nothing at all - which is how a capture ends up containing only what was
+ * already on screen.
+ */
+function findScrollers(): Element[] {
+  const found: Element[] = [];
+
+  const doc = document.scrollingElement;
+  if (doc && doc.scrollHeight > doc.clientHeight + 2) found.push(doc);
+
+  // Ignore small scrollers (dropdowns, code blocks); the content region is what
+  // holds the lazy-loaded material, and scroll-container expansion handles the rest.
+  const minArea = window.innerWidth * window.innerHeight * 0.2;
+  const candidates: { el: Element; area: number }[] = [];
+  for (const el of Array.from(document.body?.querySelectorAll('*') ?? [])) {
+    if (!(el instanceof HTMLElement)) continue;
+    if (el === doc) continue;
+    const style = getComputedStyle(el);
+    if (!/^(auto|scroll|overlay)$/.test(style.overflowY)) continue;
+    if (el.scrollHeight <= el.clientHeight + 2) continue;
+    const rect = el.getBoundingClientRect();
+    const area = rect.width * rect.height;
+    if (area < minArea) continue;
+    candidates.push({ el, area });
+  }
+  candidates.sort((a, b) => b.area - a.area);
+  for (const candidate of candidates.slice(0, 3)) found.push(candidate.el);
+
+  return found;
+}
+
+/**
+ * Walks one scroller from top to bottom. The extent is re-measured on every step
+ * so a page that grows as you scroll keeps going, and the whole thing is bounded
+ * by a step count and a shared deadline so an endless feed cannot stall a capture.
+ * Returns true if it stopped early with content still below.
+ */
+async function primeScroller(el: Element, deadline: number): Promise<boolean> {
+  const step = Math.max(el.clientHeight * 0.8, 200);
+  let y = 0;
+  let steps = 0;
+
+  while (steps < PRIME_MAX_STEPS && performance.now() < deadline) {
+    const max = el.scrollHeight - el.clientHeight;
+    if (y >= max) break;
+    el.scrollTop = y;
+    await wait(60);
+    y += step;
+    steps++;
+  }
+
+  // The loop always stops one step short of the end, so land on the bottom
+  // explicitly: anything keyed to the very end of the range fires only there.
+  const bottom = el.scrollHeight - el.clientHeight;
+  if (bottom > 0) {
+    el.scrollTop = bottom;
+    await wait(80);
+  }
+
+  // Whatever appeared in response to that last scroll is content we are leaving behind.
+  const remaining = el.scrollHeight - el.clientHeight - bottom;
+  el.scrollTop = 0;
+  await wait(60);
+  return remaining > step;
+}
+
+/**
+ * Scrolls every scroller end to end so lazy images and anything driven by an
+ * IntersectionObserver has rendered before the DOM is read.
+ */
+async function primeLazyContent(warnings: string[]): Promise<void> {
   for (const img of Array.from(document.images)) {
     if (img.loading === 'lazy') img.loading = 'eager';
     img.decoding = 'sync';
   }
 
-  for (let y = 0; y < total; y += step) {
-    window.scrollTo(0, y);
-    await wait(60);
+  const deadline = performance.now() + PRIME_BUDGET_MS;
+  let truncated = false;
+  for (const scroller of findScrollers()) {
+    truncated = (await primeScroller(scroller, deadline)) || truncated;
   }
-  window.scrollTo(0, total);
-  await wait(120);
-  window.scrollTo(originalX, 0);
-  await wait(120);
-  void originalY;
+
+  if (truncated) {
+    warnings.push(
+      'The page kept loading more content while it was being scrolled, so the capture stops where it got to. Scroll further down yourself and capture again to reach the rest.',
+    );
+  }
 
   try {
     await document.fonts.ready;
@@ -84,7 +155,7 @@ async function primeLazyContent(): Promise<void> {
       img.complete ? Promise.resolve() : img.decode().catch(() => undefined),
     ),
   );
-  await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+  await settleLayout();
 }
 
 /* --------------------------------------------------------------- document */
@@ -123,7 +194,7 @@ async function capture(request: CaptureRequest, target?: Element): Promise<Captu
   let expansion: Expansion | null = null;
 
   try {
-    await primeLazyContent();
+    await primeLazyContent(warnings);
 
     // Grow internally scrolling boxes so nothing is lost below their fold, and
     // let the browser re-run layout before anything is measured.

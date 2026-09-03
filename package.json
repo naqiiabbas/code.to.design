@@ -16,9 +16,9 @@
     "package": "node scripts/package.mjs",
     "typecheck": "tsc -p packages/shared/tsconfig.json --noEmit && tsc -p packages/extension/tsconfig.json --noEmit && tsc -p packages/extension/tsconfig.test.json --noEmit && tsc -p packages/figma-plugin/tsconfig.json --noEmit",
     "icons": "node scripts/gen-icons.mjs",
-    "test": "npm run build && node --test packages/extension/src/capture/css.test.ts packages/extension/test/background.test.mjs packages/extension/test/capture.e2e.mjs packages/extension/test/modern-colors.e2e.mjs packages/extension/test/picker.e2e.mjs packages/extension/test/scroller.e2e.mjs packages/figma-plugin/test/import.e2e.mjs",
+    "test": "npm run build && node --test packages/extension/src/capture/css.test.ts packages/extension/test/background.test.mjs packages/extension/test/capture.e2e.mjs packages/extension/test/modern-colors.e2e.mjs packages/extension/test/picker.e2e.mjs packages/extension/test/scroller.e2e.mjs packages/extension/test/inner-scroll.e2e.mjs packages/figma-plugin/test/import.e2e.mjs",
     "test:unit": "npm run build:ext && node --test packages/extension/src/capture/css.test.ts packages/extension/test/background.test.mjs",
-    "test:e2e": "node --test packages/extension/test/capture.e2e.mjs packages/extension/test/modern-colors.e2e.mjs packages/extension/test/picker.e2e.mjs packages/extension/test/scroller.e2e.mjs packages/figma-plugin/test/import.e2e.mjs"
+    "test:e2e": "node --test packages/extension/test/capture.e2e.mjs packages/extension/test/modern-colors.e2e.mjs packages/extension/test/picker.e2e.mjs packages/extension/test/scroller.e2e.mjs packages/extension/test/inner-scroll.e2e.mjs packages/figma-plugin/test/import.e2e.mjs"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.100.2",
